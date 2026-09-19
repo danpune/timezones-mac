@@ -224,7 +224,12 @@ struct Row: View {
                         Image(systemName: place.pinned ? "pin.fill" : "pin").font(.system(size: 9)).foregroundStyle(.secondary).opacity(place.pinned ? 1 : 0.5)
                     }
                 }
-                Text(sub).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
+                // The next sunrise or sunset as its own symbol plus the time, so "tomorrow" still fits.
+                (Text([store.gap(place, at: at), store.weekday(place, at: at)].compactMap { $0 }.joined(separator: " · "))
+                 + (store.sunEvent(place, at: at).map { e in
+                        Text(" · ") + Text(Image(systemName: e.rise ? "sunrise" : "sunset")) + Text(" " + e.time)
+                    } ?? store.sunText(place, at: at).map { Text(" · " + $0) } ?? Text("")))
+                    .font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
             }
             Spacer(minLength: 6)
             if store.hoverID == place.id && !dragging && store.places.count > 1 {

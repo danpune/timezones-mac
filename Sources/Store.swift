@@ -243,6 +243,12 @@ final class Store: ObservableObject {
     }
 
     /// "sunset 7:20" / "sunrise 6:26" in the city's own time; AM/PM is left off because the word says which.
+    /// The next sunrise (rise true) or sunset in the city's own time, without AM/PM.
+    func sunEvent(_ p: Place, at t: Date) -> (rise: Bool, time: String)? {
+        guard let la = p.lat, let lo = p.lon, let e = Sky.nextEvent(t, lat: la, lon: lo) else { return nil }
+        return (e.rise, formatter(p.zone, h24 ? "HH:mm" : "h:mm").string(from: e.at))
+    }
+
     func sunText(_ p: Place, at t: Date) -> String? {
         guard let la = p.lat, let lo = p.lon else { return nil }
         guard let e = Sky.nextEvent(t, lat: la, lon: lo) else {
