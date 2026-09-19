@@ -13,6 +13,17 @@ coloured by that city's real sky, the hours everyone is awake or at work, and a 
 - 12h / 24h, open at login (asked once), ⌃⌥T opens the panel from any app
 - Only the weather needs the internet; no accounts, no tracking
 
+## Install
+
+1. Download **Time-Zones-mac.zip** from the [latest release](https://github.com/danpune/timezones-mac/releases/latest) and double-click it.
+2. Drag **Time Zones** into your Applications folder, then open it.
+3. macOS says it can't check the app, because it isn't signed with a paid Apple developer account.
+   Open **System Settings → Privacy & Security**, scroll down, click **Open Anyway** next to
+   "Time Zones", and enter your password. You only do this once for each version.
+   ([Apple's guide](https://support.apple.com/guide/mac-help/open-a-mac-app-from-an-unknown-developer-mh40616/mac))
+4. The app lives in the menu bar (no Dock icon). ⌃⌥T opens it from any app; opening the app again from
+   Spotlight or Finder also shows it.
+
 ## Build
 
 Needs only the Xcode Command Line Tools:
