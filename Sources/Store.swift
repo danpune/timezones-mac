@@ -281,16 +281,18 @@ final class Store: ObservableObject {
         return (e.rise ? "sunrise " : "sunset ") + formatter(p.zone, h24 ? "HH:mm" : "h:mm").string(from: e.at)
     }
 
-    /// Short 12h times ("11:40p") so three cities fit beside the notch; VoiceOver gets the full time.
-    func menuTitle(short: Bool = true) -> String {
+    /// Short 12h times ("11:40p") so more cities fit beside the notch; VoiceOver gets the full time.
+    /// Without labels it is times alone, in the panel's order: the status controller falls back to that
+    /// when the menu bar has no room for the flags and names.
+    func menuTitle(short: Bool = true, labels: Bool = true) -> String {
         let pins = places.filter(\.pinned)
         let flags = pins.map(\.flag)
         return pins.map { p in
             let unique = !p.flag.isEmpty && flags.filter { $0 == p.flag }.count == 1
             let tag = pins.count == 1 ? (p.flag.isEmpty ? p.short : p.flag + " " + p.short) : unique ? p.flag : p.short
             let t = short && !h24 ? String(formatter(p.zone, "h:mma").string(from: now).dropLast()).lowercased() : time(p, at: now)
-            return tag + " " + t
-        }.joined(separator: "  ")
+            return labels ? tag + " " + t : t
+        }.joined(separator: labels ? "  " : " ")
     }
 
     // MARK: clock changes, as on the website: a zone's offset changes within a week before or two weeks after
@@ -479,7 +481,7 @@ final class Store: ObservableObject {
         }
         places[i].pinned.toggle()
         if places[i].pinned && pinned >= 3 {
-            note = "\(pinned + 1) cities in the menu bar: if it runs out of room, macOS hides them behind its « arrow."
+            note = "\(pinned + 1) cities in the menu bar: if there is no room beside the clock, the names go and the times stay."
         }
     }
 

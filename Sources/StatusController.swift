@@ -1,5 +1,6 @@
 import AppKit
 import Combine
+import OSLog
 import SwiftUI
 
 /// The menu bar item and its panel, built on NSStatusItem + NSPopover rather than SwiftUI's
@@ -11,6 +12,11 @@ final class StatusController: NSObject, NSApplicationDelegate, NSPopoverDelegate
     private var item: NSStatusItem!
     private let popover = NSPopover()
     private var changes: Set<AnyCancellable> = []
+    /// The menu bar had no room for flags and names, so the item shows times alone.
+    private var compact = false
+    private var pins = ""
+    private var measure = true
+    private let log = Logger(subsystem: "io.github.danpune.timezones", category: "menubar")
 
     func applicationDidFinishLaunching(_ note: Notification) {
         StatusController.shared = self
@@ -23,6 +29,9 @@ final class StatusController: NSObject, NSApplicationDelegate, NSPopoverDelegate
         popover.behavior = .transient
         popover.delegate = self
         store.panelShown = { [weak self] in self?.popover.isShown ?? false }
+        NotificationCenter.default.addObserver(forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main) { [weak self] _ in
+            Task { @MainActor in self?.compact = false; self?.measure = true; self?.refresh() }   // another screen, another menu bar
+        }
         for source in [store.objectWillChange, Updater.shared.objectWillChange] {
             source.sink { [weak self] _ in DispatchQueue.main.async { self?.refresh() } }.store(in: &changes)
         }
@@ -35,11 +44,25 @@ final class StatusController: NSObject, NSApplicationDelegate, NSPopoverDelegate
     /// after an update, until the panel is opened and the "Updated" line has been seen.
     private func refresh() {
         guard let b = item?.button else { return }
-        let t = store.menuTitle(), updated = Updater.shared.updated
+        let pinned = store.places.filter(\.pinned).map(\.name).joined(separator: "|")
+        if pinned != pins { pins = pinned; compact = false; measure = true }   // a new set of cities: try the labels again
+        let t = store.menuTitle(labels: !compact), updated = Updater.shared.updated
         b.image = t.isEmpty ? NSImage(systemSymbolName: "globe", accessibilityDescription: "Time Zones") : nil
         b.attributedTitle = StatusController.title(t, dot: updated != nil)
+        b.toolTip = t.isEmpty ? "Time Zones" : store.menuTitle(short: false)
         b.setAccessibilityLabel((t.isEmpty ? "Time Zones" : "Time Zones, " + store.menuTitle(short: false))
                                 + (updated.map { ", updated to version \($0)" } ?? ""))
+        if measure { measure = false; DispatchQueue.main.async { self.fit() } }
+    }
+
+    /// An item too wide for the space beside the clock is moved by macOS to the other side of the camera,
+    /// where an app with many menus hides it. Then the flags and names go and the times stay.
+    private func fit() {
+        guard !compact, let notch = NSScreen.main?.auxiliaryTopRightArea?.minX,
+              let x = item?.button?.window?.frame.minX, x < notch else { return }
+        log.info("menu bar item at \(x, privacy: .public) is left of the camera at \(notch, privacy: .public): dropping the labels")
+        compact = true
+        refresh()
     }
 
     static func title(_ text: String, dot: Bool) -> NSAttributedString {
