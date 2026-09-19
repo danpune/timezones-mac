@@ -42,7 +42,7 @@ struct Snap {
         print("link:", store.websiteURL()?.absoluteString ?? "-")
         print("parse:", ["3pm", "3:30 pm", "15:30", "1530", "9", "25:00", "13pm", "abc"].map { Store.parseTime($0).map(String.init) ?? "nil" })
         store.planned = nil
-        store.query = "nel"; shot("5-search")
+        store.query = "san"; shot("5-search")
         print("search pst:", Catalog.shared.search("pst").map { $0.name + " " + $0.zone })
         print("search ist:", Catalog.shared.search("ist").prefix(2).map { $0.name + " " + $0.zone })
         print("search utc:", Catalog.shared.search("utc").prefix(1).map { $0.name + " " + $0.zone })
