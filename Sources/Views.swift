@@ -5,18 +5,31 @@ struct Panel: View {
 
     var body: some View {
         let t = store.instant
+        let home = TimeZone.current.identifier
         VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Text("Time Zones").font(.headline)
                 Spacer()
                 if store.planning {
-                    Button("Back to now") { store.offsetMin = 0 }.buttonStyle(.borderedProminent).controlSize(.small)
+                    Button("Back to now") { store.planned = nil; store.timeText = "" }.buttonStyle(.borderedProminent).controlSize(.small)
                 } else {
                     HStack(spacing: 5) {
                         Circle().fill(.green).frame(width: 7, height: 7)
                         Text("Live").font(.caption).foregroundStyle(.secondary)
                     }
                 }
+            }
+
+            if store.askLogin {
+                HStack(spacing: 8) {
+                    Text("Open Time Zones automatically when you log in?").font(.callout)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Spacer(minLength: 4)
+                    Button("Not now") { store.answerLogin(false) }.controlSize(.small)
+                    Button("Yes") { store.answerLogin(true) }.buttonStyle(.borderedProminent).controlSize(.small)
+                }
+                .padding(10)
+                .background(Color.accentColor.opacity(0.1), in: RoundedRectangle(cornerRadius: 8))
             }
 
             // A table, one city per row: the times sit in one right-aligned column so they compare at a glance.
@@ -29,44 +42,68 @@ struct Panel: View {
 
             search
 
-            if let o = store.overlap {
-                let parts = o.split(separator: ":", maxSplits: 1).map(String.init)
-                HStack(alignment: .top, spacing: 8) {
-                    RoundedRectangle(cornerRadius: 1.5).fill(Color(red: 0.086, green: 0.639, blue: 0.290)).frame(width: 3)
-                    (Text(parts[0] + ":").bold() + Text(parts.count > 1 ? parts[1] : "")).font(.callout)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            }
+            if let o = store.overlap { note(o, Color(red: 0.086, green: 0.639, blue: 0.290)) }
+            if let c = store.clockNote { note(c, Color(red: 0.851, green: 0.467, blue: 0.024)) }
 
-            VStack(alignment: .leading, spacing: 2) {
-                Slider(value: Binding(get: { store.offsetMin }, set: { store.offsetMin = ($0 / 15).rounded() * 15 }), in: -720...2160)
+            // Plan a moment: pick a day, type a time ("3pm", "15:30") or drag the slider through the day.
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 8) {
+                    DatePicker("Day", selection: Binding(get: { t }, set: { store.setDay($0) }), displayedComponents: .date)
+                        .labelsHidden().datePickerStyle(.field).fixedSize()
+                    TextField(store.clock(home, t), text: $store.timeText)
+                        .textFieldStyle(.roundedBorder).frame(width: 84)
+                        .onSubmit { if !store.applyTyped() { store.note = "Try a time like 3pm, 9:30 am or 15:30." } }
+                        .help("Type a time, like 3pm or 15:30, then press Return")
+                    Spacer()
+                    Button { store.copyTimes() } label: { Label("Copy times", systemImage: "doc.on.doc") }
+                        .controlSize(.small).help("Copy every city's time, ready to paste into a message")
+                }
+                Slider(value: Binding(get: { store.minuteOfDay }, set: { store.setMinuteOfDay(Int(($0 / 15).rounded()) * 15) }), in: 0...1425)
                 Text(store.planning
-                     ? "Planning \(store.formatter(TimeZone.current.identifier, "EEE").string(from: t)) \(store.clock(TimeZone.current.identifier, t)) your time"
-                     : "Drag to plan a time")
+                     ? "Planning \(store.formatter(home, "EEE, MMM d").string(from: t)) at \(store.clock(home, t)) your time"
+                     : "Pick a day, type a time or drag to plan")
                     .font(.caption).foregroundStyle(.secondary)
             }
 
             if store.editing { editor }
 
             Divider()
-            HStack {
+            HStack(spacing: 8) {
                 Button(store.editing ? "Done" : "Nicknames and pins") { store.editing.toggle() }
                 Spacer()
                 Picker("Clock", selection: $store.h24) { Text("12h").tag(false); Text("24h").tag(true) }
-                    .pickerStyle(.segmented).labelsHidden().frame(width: 92)
+                    .pickerStyle(.segmented).labelsHidden().frame(width: 86)
+                Picker("Temperature", selection: $store.fahrenheit) { Text("°F").tag(true); Text("°C").tag(false) }
+                    .pickerStyle(.segmented).labelsHidden().frame(width: 72)
                 Menu {
                     Toggle("Open at login", isOn: Binding(get: { store.launchAtLogin }, set: setLogin))
+                    Toggle("Open with ⌃⌥T from any app", isOn: $store.hotkeyOn)
+                    Divider()
+                    Button("Copy times") { store.copyTimes() }
+                    Button("Copy a link to this on the website") { store.copyLink() }
                     Button("Open the website") { store.openWebsite() }
                     Divider()
+                    Button("Weather data: Open-Meteo.com") { if let u = URL(string: "https://open-meteo.com/") { NSWorkspace.shared.open(u) } }
                     Button("Quit Time Zones") { NSApp.terminate(nil) }.keyboardShortcut("q")
                 } label: { Image(systemName: "ellipsis.circle") }
                     .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
             }
-            Text(store.note ?? "Drag a city to reorder. Click it to show or hide it in the menu bar.")
+            Text(store.note ?? "Drag a city to reorder. Click it to show or hide it in the menu bar. ⌃⌥T opens this from anywhere.")
                 .font(.caption2).foregroundStyle(store.note == nil ? .secondary : .primary)
+                .fixedSize(horizontal: false, vertical: true)
         }
         .padding(14)
-        .frame(width: 372)
+        .frame(width: 430)
+    }
+
+    /// A note with a coloured edge and a bold label before the first colon, as on the website.
+    private func note(_ s: String, _ edge: Color) -> some View {
+        let parts = s.split(separator: ":", maxSplits: 1).map(String.init)
+        return HStack(alignment: .top, spacing: 8) {
+            RoundedRectangle(cornerRadius: 1.5).fill(edge).frame(width: 3)
+            (Text(parts[0] + ":").bold() + Text(parts.count > 1 ? parts[1] : "")).font(.callout)
+                .fixedSize(horizontal: false, vertical: true)
+        }
     }
 
     private func setLogin(_ on: Bool) {
@@ -157,6 +194,7 @@ struct Row: View {
         let parts = clock.split(separator: " ").map(String.init)
         let sky = place.lat.flatMap { la in place.lon.map { Sky.symbol(at, lat: la, lon: $0) } }
         let sun = store.sunText(place, at: at)
+        let weather = store.wx(place, at: at)
         let sub = [store.gap(place, at: at), store.weekday(place, at: at), sun].compactMap { $0 }.joined(separator: " · ")
         let dragging = store.dragID == place.id
         HStack(spacing: 10) {
@@ -173,6 +211,16 @@ struct Row: View {
                 Button { store.remove(place) } label: { Image(systemName: "xmark.circle.fill").font(.system(size: 14)) }
                     .buttonStyle(.plain).foregroundStyle(.secondary).help("Remove \(place.shown)")
             }
+            // Weather in its own column, so temperatures line up like the times.
+            HStack(spacing: 3) {
+                if let w = weather {
+                    Image(systemName: w.symbol).symbolRenderingMode(.hierarchical).font(.system(size: 13))
+                    Text("\(w.temp)°").font(.system(size: 13, weight: .medium)).monospacedDigit()
+                }
+            }
+            .foregroundStyle(.secondary)
+            .frame(width: 54, alignment: .trailing)
+            .help(weather.map { $0.words.capitalized } ?? "")
             // Right-aligned with fixed-width digits and a fixed AM/PM slot, so every colon lines up.
             HStack(alignment: .firstTextBaseline, spacing: 3) {
                 if let sky { Image(systemName: sky.name).font(.system(size: 12, weight: .semibold)).symbolRenderingMode(.hierarchical) }
@@ -210,6 +258,6 @@ struct Row: View {
             Button("Remove \(place.shown)", role: .destructive) { store.remove(place) }.disabled(store.places.count == 1)
         }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(place.shown), \(clock)\(sky.map { ", " + $0.words } ?? ""), \(sub)\(place.pinned ? ", in the menu bar" : "")")
+        .accessibilityLabel("\(place.shown), \(clock)\(sky.map { ", " + $0.words } ?? "")\(weather.map { ", \($0.temp) degrees, \($0.words)" } ?? ""), \(sub)\(place.pinned ? ", in the menu bar" : "")")
     }
 }

@@ -15,6 +15,9 @@ struct Snap {
         print("search mum:", Catalog.shared.search("mum").map(\.name))
         print("search thailand:", Catalog.shared.search("thailand").map(\.name))
         print("search nel:", Catalog.shared.search("nel").map(\.name))
+        store.loadWeather()
+        for _ in 0..<40 { RunLoop.main.run(until: Date().addingTimeInterval(0.25)); if store.wx(store.places[0], at: Date()) != nil { break } }
+        print("weather:", store.places.map { p in store.wx(p, at: Date()).map { "\(p.name) \($0.temp)° \($0.words)" } ?? "\(p.name) none" })
         func shot(_ name: String, dark: Bool = false) {
             let host = NSHostingView(rootView: Panel().environmentObject(store).background(Color(nsColor: .windowBackgroundColor)))
             host.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
@@ -33,8 +36,12 @@ struct Snap {
         shot("1-live")
         shot("2-live-dark", dark: true)
         store.h24 = true; shot("3-24h"); store.h24 = false
-        store.offsetMin = 12 * 60; shot("4-planning")
-        store.offsetMin = 0
+        store.setMinuteOfDay(9 * 60, on: Calendar.current.date(from: DateComponents(year: 2026, month: 10, day: 27))); shot("4-planning")
+        print("clock note:", store.clockNote ?? "-")
+        print("times:\n" + store.timesText)
+        print("link:", store.websiteURL()?.absoluteString ?? "-")
+        print("parse:", ["3pm", "3:30 pm", "15:30", "1530", "9", "25:00", "13pm", "abc"].map { Store.parseTime($0).map(String.init) ?? "nil" })
+        store.planned = nil
         store.query = "nel"; shot("5-search")
         print("search pst:", Catalog.shared.search("pst").map { $0.name + " " + $0.zone })
         print("search ist:", Catalog.shared.search("ist").prefix(2).map { $0.name + " " + $0.zone })

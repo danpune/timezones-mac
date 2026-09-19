@@ -4,11 +4,19 @@ import SwiftUI
 
 @MainActor
 final class Store: ObservableObject {
-    @Published var places: [Place] { didSet { save() } }
+    @Published var places: [Place] { didSet { save(); loadWeather() } }
     @Published var h24: Bool { didSet { UserDefaults.standard.set(h24, forKey: "h24"); formatters = [:] } }
     @Published private(set) var now = Date()
-    /// Planning: minutes past the current quarter hour. 0 means live.
-    @Published var offsetMin: Double = 0
+    /// A planned moment, or nil for live. Set from the date picker, the slider or a typed time.
+    @Published var planned: Date?
+    @Published var timeText = ""
+    /// Asked once on first run: Apple's rules say launch at login must be the user's choice.
+    @Published var askLogin = !UserDefaults.standard.bool(forKey: "askedLogin")
+    @Published var fahrenheit: Bool { didSet { UserDefaults.standard.set(fahrenheit, forKey: "fahrenheit") } }
+    @Published private(set) var weather: [String: Wx] = [:]
+    private var wxBusy = false
+    private var wxFailed: Date?
+    @Published var hotkeyOn: Bool { didSet { UserDefaults.standard.set(hotkeyOn, forKey: "hotkey"); applyHotKey() } }
     // Panel state lives here: with only the Command Line Tools, SwiftUI's @State macro has no plugin.
     @Published var editing = false
     @Published var query = ""
@@ -34,7 +42,12 @@ final class Store: ObservableObject {
         } else {
             places = Store.defaults()
         }
+        hotkeyOn = d.object(forKey: "hotkey") as? Bool ?? true
+        fahrenheit = d.object(forKey: "fahrenheit") as? Bool ?? (Locale.current.measurementSystem == .us)
         schedule()
+        if launchAtLogin { askLogin = false }
+        HotKey.action = { HotKey.togglePanel() }
+        applyHotKey()
         let nc = NotificationCenter.default, ws = NSWorkspace.shared.notificationCenter
         for name in [NSNotification.Name.NSSystemClockDidChange, .NSSystemTimeZoneDidChange] {
             nc.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
@@ -79,20 +92,54 @@ final class Store: ObservableObject {
         now = Date()
         let next = Calendar.current.nextDate(after: now, matching: DateComponents(second: 0), matchingPolicy: .nextTime) ?? now.addingTimeInterval(60)
         let t = Timer(fire: next, interval: 60, repeats: true) { [weak self] _ in
-            Task { @MainActor in self?.now = Date() }
+            Task { @MainActor in self?.now = Date(); self?.loadWeather() }
         }
         t.tolerance = 0.5
         RunLoop.main.add(t, forMode: .common)
         timer = t
     }
 
-    var planning: Bool { offsetMin != 0 }
+    var planning: Bool { planned != nil }
 
-    /// The instant everything shows: now, or a quarter-hour step from it while planning.
-    var instant: Date {
-        guard planning else { return now }
-        let q = floor(now.timeIntervalSince1970 / 900) * 900
-        return Date(timeIntervalSince1970: q + offsetMin * 60)
+    /// The instant everything shows: now, or the planned moment.
+    var instant: Date { planned ?? now }
+
+    // MARK: planning, in your own time (the Mac's zone)
+
+    var minuteOfDay: Double {
+        let c = Calendar.current.dateComponents([.hour, .minute], from: instant)
+        return Double((c.hour ?? 0) * 60 + (c.minute ?? 0))
+    }
+
+    /// Same day, new time. A time inside a spring-forward gap moves to the next valid minute.
+    func setMinuteOfDay(_ m: Int, on day: Date? = nil) {
+        let cal = Calendar.current, base = cal.startOfDay(for: day ?? instant)
+        let m = max(0, min(1439, m))
+        planned = cal.date(bySettingHour: m / 60, minute: m % 60, second: 0, of: base, matchingPolicy: .nextTime, direction: .forward)
+            ?? base.addingTimeInterval(Double(m) * 60)
+    }
+
+    /// New day, same time of day.
+    func setDay(_ d: Date) { setMinuteOfDay(Int(minuteOfDay), on: d) }
+
+    /// "3pm", "3:30 pm", "15:30", "1530", "9". Same rules as the website's time box.
+    static func parseTime(_ v: String) -> Int? {
+        let s = v.lowercased().replacingOccurrences(of: " ", with: "").replacingOccurrences(of: ".", with: "")
+        guard let m = s.wholeMatch(of: #/(\d{1,2})(?::?(\d{2}))?(am|pm|a|p)?/#) else { return nil }
+        var h = Int(m.1) ?? 0
+        let mi = m.2.flatMap { Int($0) } ?? 0
+        guard mi <= 59 else { return nil }
+        if let ap = m.3 {
+            guard (1...12).contains(h) else { return nil }
+            h = h % 12 + (ap.hasPrefix("p") ? 12 : 0)
+        } else if h > 23 { return nil }
+        return h * 60 + mi
+    }
+
+    /// Returns false when the text isn't a time, so the field can say so.
+    func applyTyped() -> Bool {
+        guard let m = Store.parseTime(timeText) else { return timeText.isEmpty }
+        setMinuteOfDay(m); timeText = ""; return true
     }
 
     // MARK: formatting
@@ -135,8 +182,129 @@ final class Store: ObservableObject {
     }
 
     var menuTitle: String {
-        places.filter(\.pinned).map { "\($0.short) \(time($0, at: now))" }.joined(separator: "   ")
+        places.filter(\.pinned).map { ($0.flag.isEmpty ? "" : $0.flag + " ") + "\($0.short) \(time($0, at: now))" }.joined(separator: "   ")
     }
+
+    // MARK: clock changes, as on the website: a zone's offset changes within a week before or two weeks after
+
+    private static func clockChange(_ t: Date, _ z: TimeZone) -> (at: Date, d: Int)? {
+        let day = 86_400.0, off = { (x: Date) in z.secondsFromGMT(for: x) / 60 }
+        var a = t.addingTimeInterval(-7 * day), oa = off(a)
+        var b = a.addingTimeInterval(day)
+        while b <= t.addingTimeInterval(14 * day) {
+            let ob = off(b)
+            if ob != oa {
+                var lo = a, hi = b
+                while hi.timeIntervalSince(lo) > 60 { let m = lo.addingTimeInterval(hi.timeIntervalSince(lo) / 2); if off(m) == oa { lo = m } else { hi = m } }
+                return (hi, ob - oa)
+            }
+            a = b; oa = ob; b = b.addingTimeInterval(day)
+        }
+        return nil
+    }
+
+    var clockNote: String? {
+        let t = instant
+        let cs = places.map { Store.clockChange(t, $0.tz) }
+        struct G { let when: String; let at: Date; let d: Int; let past: Bool; var names: [String] }
+        var groups: [G] = []
+        for (p, c) in zip(places, cs) {
+            guard let c else { continue }
+            let when = formatter(p.zone, "EEE, MMM d").string(from: c.at), past = c.at <= t
+            if let i = groups.firstIndex(where: { $0.when == when && $0.d == c.d && $0.past == past }) { groups[i].names.append(p.shown) }
+            else { groups.append(G(when: when, at: c.at, d: c.d, past: past, names: [p.shown])) }
+        }
+        guard !groups.isEmpty else { return nil }
+        let list = ListFormatter(); list.locale = Locale(identifier: "en_GB")
+        let amt = { (d: Int) in abs(d) % 60 != 0 ? "\(abs(d)) min" : "\(abs(d) / 60)h" }
+        let text = groups.sorted { $0.at < $1.at }.map { g in
+            (list.string(from: g.names) ?? g.names.joined(separator: ", ")) + " "
+                + (g.past ? "went" : g.names.count > 1 ? "go" : "goes") + (g.d > 0 ? " forward " : " back ") + amt(g.d) + " on " + g.when
+        }.joined(separator: "; ")
+        let first = cs.first ?? nil
+        let shift = places.count > 1 && cs.contains { c in
+            guard let c, let f = first else { return true }
+            return c.d != f.d || abs(c.at.timeIntervalSince(f.at)) > 86_400
+        }
+        return "Clocks change: " + text + (shift ? ". The time differences between these cities change too." : ".")
+    }
+
+    // MARK: sharing
+
+    /// "Sat, Sep 19" then "Austin: 9:00 AM", one city per line, "(+1d)" when the date differs.
+    var timesText: String {
+        let t = instant, home = TimeZone.current.identifier
+        let homeDay = formatter(home, "yyyy-MM-dd").string(from: t)
+        let lines = places.map { p -> String in
+            let day = formatter(p.zone, "yyyy-MM-dd").string(from: t)
+            let dd = day == homeDay ? "" : (day > homeDay ? " (+1d)" : " (-1d)")
+            return "\(p.shown): \(time(p, at: t))" + dd
+        }
+        return ([formatter(home, "EEE, MMM d").string(from: t)] + lines).joined(separator: "\n")
+    }
+
+    private func copy(_ s: String, _ what: String) {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(s, forType: .string)
+        note = "Copied \(what)."
+    }
+    func copyTimes() { copy(timesText, "the times") }
+    func copyLink() { if let u = websiteURL() { copy(u.absoluteString, "a link to the website with these cities") } }
+
+    // MARK: weather from Open-Meteo (free, no key, CC BY 4.0), as on the website
+
+    struct Wx { let t0: Double; let temp: [Double?]; let code: [Int?]; let fetched: Date }
+
+    private func wxKey(_ p: Place) -> String? {
+        guard let la = p.lat, let lo = p.lon, abs(la) <= 90, abs(lo) <= 180 else { return nil }
+        return String(format: "%.2f,%.2f", la, lo)
+    }
+
+    /// One request for every city, hourly from yesterday to a week out, so a planned time shows
+    /// that hour's forecast. Refreshed hourly; after a failure, retried in 10 minutes.
+    func loadWeather() {
+        guard !wxBusy, wxFailed.map({ Date().timeIntervalSince($0) > 600 }) ?? true else { return }
+        let keys = Array(Set(places.compactMap(wxKey))).filter { weather[$0].map { Date().timeIntervalSince($0.fetched) > 3600 } ?? true }
+        guard !keys.isEmpty else { return }
+        let lat = keys.map { $0.split(separator: ",")[0] }.joined(separator: ","), lon = keys.map { $0.split(separator: ",")[1] }.joined(separator: ",")
+        guard let url = URL(string: "https://api.open-meteo.com/v1/forecast?latitude=\(lat)&longitude=\(lon)&hourly=temperature_2m,weather_code&past_days=1&forecast_days=7&timeformat=unixtime&timezone=GMT") else { return }
+        wxBusy = true
+        URLSession.shared.dataTask(with: url) { data, resp, _ in
+            let ok = (resp as? HTTPURLResponse)?.statusCode == 200
+            let json = data.flatMap { try? JSONSerialization.jsonObject(with: $0) }
+            let items = (json as? [[String: Any]]) ?? (json as? [String: Any]).map { [$0] } ?? []
+            var got: [String: Wx] = [:]
+            if ok, items.count == keys.count {
+                for (k, it) in zip(keys, items) {
+                    guard let h = it["hourly"] as? [String: Any], let times = h["time"] as? [Double], let t0 = times.first else { continue }
+                    got[k] = Wx(t0: t0, temp: (h["temperature_2m"] as? [Any] ?? []).map { $0 as? Double },
+                                code: (h["weather_code"] as? [Any] ?? []).map { $0 as? Int }, fetched: Date())
+                }
+            }
+            Task { @MainActor in
+                self.wxBusy = false
+                if got.isEmpty { self.wxFailed = Date() } else { self.weather.merge(got) { $1 } }
+            }
+        }.resume()
+    }
+
+    /// Temperature in the chosen unit and an SF Symbol for the hour nearest t.
+    func wx(_ p: Place, at t: Date) -> (temp: Int, symbol: String, words: String)? {
+        guard let k = wxKey(p), let w = weather[k] else { return nil }
+        let i = Int(((t.timeIntervalSince1970 - w.t0) / 3600).rounded())
+        guard i >= 0, i < w.temp.count, i < w.code.count, let c = w.temp[i], let code = w.code[i] else { return nil }
+        let day = (p.lat.flatMap { la in p.lon.map { Sky.sunAlt(t, lat: la, lon: $0) } } ?? 0) >= Sky.h0
+        let look: (String, String) = code == 0 ? (day ? "sun.max.fill" : "moon.stars.fill", "clear")
+            : code <= 2 ? (day ? "cloud.sun.fill" : "cloud.moon.fill", "partly cloudy")
+            : code == 3 ? ("cloud.fill", "cloudy") : code <= 48 ? ("cloud.fog.fill", "fog")
+            : code <= 57 ? ("cloud.drizzle.fill", "drizzle") : code <= 67 || (80...82).contains(code) ? ("cloud.rain.fill", "rain")
+            : code <= 86 ? ("cloud.snow.fill", "snow") : ("cloud.bolt.rain.fill", "thunderstorm")
+        return (Int((fahrenheit ? c * 9 / 5 + 32 : c).rounded()), look.0, look.1)
+    }
+
+    // MARK: keyboard shortcut ⌃⌥T
+
+    private func applyHotKey() { if hotkeyOn { HotKey.register() } else { HotKey.unregister() } }
 
     // MARK: overlap, as on the website: every city at work 9–6, else every city awake 7 AM–10 PM
 
@@ -196,8 +364,11 @@ final class Store: ObservableObject {
 
     func endDrag() { dragID = nil; dragOffset = 0 }
 
-    /// Open the full website with these cities, in the long link form it understands for any city.
-    func openWebsite() {
+    func openWebsite() { if let u = websiteURL() { NSWorkspace.shared.open(u) } }
+
+    /// The website with these cities, in the long link form it understands for any city,
+    /// plus the planned date and time (in the first city's time, the site's default base).
+    func websiteURL() -> URL? {
         let tok = { (s: String) -> String in
             var o = ""
             for ch in s { o += ",&~#@%".contains(ch) ? (String(ch).addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? "") : (ch == " " ? "_" : String(ch)) }
@@ -209,8 +380,11 @@ final class Store: ObservableObject {
             if let l = p.label, !l.isEmpty { s += "~" + (l.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? "") }
             return s
         }.joined(separator: ",")
-        let hash = list.addingPercentEncoding(withAllowedCharacters: .urlFragmentAllowed) ?? list
-        if let url = URL(string: "https://danpune.github.io/timezones/#" + hash) { NSWorkspace.shared.open(url) }
+        var hash = list.addingPercentEncoding(withAllowedCharacters: .urlFragmentAllowed) ?? list
+        if planning, let first = places.first {
+            hash += "&d=" + formatter(first.zone, "yyyy-MM-dd").string(from: instant) + "&t=" + formatter(first.zone, "HH:mm").string(from: instant)
+        }
+        return URL(string: "https://danpune.github.io/timezones/#" + hash)
     }
 
     // MARK: launch at login (asks macOS; the user can turn it off in System Settings > Login Items)
@@ -220,5 +394,13 @@ final class Store: ObservableObject {
     func setLaunchAtLogin(_ on: Bool) throws {
         if on { try SMAppService.mainApp.register() } else { try SMAppService.mainApp.unregister() }
         objectWillChange.send()
+    }
+
+    func answerLogin(_ yes: Bool) {
+        UserDefaults.standard.set(true, forKey: "askedLogin")
+        askLogin = false
+        guard yes else { return }
+        do { try setLaunchAtLogin(true); note = "Time Zones will open when you log in." }
+        catch { note = "macOS needs your OK: System Settings > General > Login Items." }
     }
 }

@@ -7,8 +7,10 @@ coloured by that city's real sky, the hours everyone is awake or at work, and a 
 - SwiftUI `MenuBarExtra`, no Dock icon, macOS 13 or later, Apple silicon and Intel
 - Same sun maths and sky colours as the website; ~6,300 searchable cities (GeoNames, CC BY 4.0)
 - Click a tile to show or hide that city in the menu bar; **Edit cities** to add, rename, reorder, remove
-- 12h / 24h, open at login, open the same cities on the website
-- No network, no accounts, no tracking
+- Weather per city from Open-Meteo (free, CC BY 4.0), °F or °C, one request for all cities, hourly
+- Clock-change warning, pick a day and type a time ("3pm"), Copy times for messages
+- 12h / 24h, open at login (asked once), ⌃⌥T opens the panel from any app
+- Only the weather needs the internet; no accounts, no tracking
 
 ## Build
 
