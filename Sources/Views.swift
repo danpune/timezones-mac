@@ -33,14 +33,28 @@ struct Panel: View {
             }
 
             // A table, one city per row: the times sit in one right-aligned column so they compare at a glance.
-            VStack(spacing: 0) {
-                ForEach(Array(store.places.enumerated()), id: \.element.id) { i, p in
-                    if i > 0 { Divider().padding(.leading, 4) }
-                    Row(place: p, at: t)
+            // Past 7 cities it scrolls, so the panel never grows taller than a laptop screen.
+            if store.editing {
+                editor
+            } else {
+                let table = VStack(spacing: 0) {
+                    ForEach(Array(store.places.enumerated()), id: \.element.id) { i, p in
+                        if i > 0 { Divider().padding(.leading, 4) }
+                        Row(place: p, at: t)
+                    }
+                }
+                if store.places.count > 7 {
+                    // no scroller gutter (it squeezed the rows); half a row peeking out says there is more
+                    ScrollView(showsIndicators: false) { table }.frame(height: 7.5 * Store.rowStep)
+                } else {
+                    table
                 }
             }
 
             search
+
+            // While searching, the results are the point: notes and the planner step aside.
+            if store.query.trimmingCharacters(in: .whitespaces).isEmpty {
 
             if let o = store.overlap {
                 let good = !(store.shared?.runs.isEmpty ?? true)
@@ -69,6 +83,7 @@ struct Panel: View {
                 Slider(value: Binding(get: { store.minuteOfDay }, set: { store.setMinuteOfDay(Int(($0 / 15).rounded()) * 15) }), in: 0...1425)
                     .accessibilityLabel("Time of day, your time")
                     .accessibilityValue(store.clock(home, t))
+                    .accessibilityAdjustableAction { d in store.nudge(d == .increment ? 15 : -15) }
                 // Green where everyone is free: drag the slider into the green.
                 GeometryReader { g in
                     let inset: CGFloat = 10, w = g.size.width - 2 * inset
@@ -85,8 +100,7 @@ struct Panel: View {
                      : "Pick a day, type a time or drag to plan. ← → move 15 minutes, Esc returns to now.")
                     .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
-
-            if store.editing { editor }
+            }
 
             Divider()
             HStack(spacing: 8) {
@@ -153,7 +167,7 @@ struct Panel: View {
             }
             .padding(.horizontal, 8).padding(.vertical, 6)
             .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 7))
-            let results = Catalog.shared.search(store.query)
+            let results = Catalog.shared.search(store.query, limit: 6)
             if !store.query.trimmingCharacters(in: .whitespaces).isEmpty && results.isEmpty {
                 Text("No match. Try a city, a country, or a zone like PST.").font(.caption).foregroundStyle(.secondary)
             }
@@ -191,7 +205,7 @@ struct Panel: View {
                         TextField("Nickname", text: Binding(get: { p.label ?? "" }, set: { p.label = $0.isEmpty ? nil : String($0.prefix(24)) }))
                             .textFieldStyle(.roundedBorder).frame(width: 90)
                         Spacer()
-                        Button { p.pinned.toggle() } label: { Image(systemName: p.pinned ? "pin.fill" : "pin") }
+                        Button { store.togglePin(p) } label: { Image(systemName: p.pinned ? "pin.fill" : "pin") }
                             .buttonStyle(.borderless).help(p.pinned ? "Hide from the menu bar" : "Show in the menu bar")
                         Button { store.remove(p) } label: { Image(systemName: "trash") }
                             .buttonStyle(.borderless).disabled(store.places.count == 1).help("Remove")

@@ -47,12 +47,16 @@ final class Store: ObservableObject {
             ?? !(DateFormatter.dateFormat(fromTemplate: "j", options: 0, locale: .current) ?? "h").contains("a")
         if let data = d.data(forKey: "places"), let saved = try? JSONDecoder().decode([Place].self, from: data), !saved.isEmpty {
             // Lists saved before state flags existed: recover each city's state from the defaults or the catalogue.
-            places = saved.map { p in
+            var loaded = saved.map { p in
                 guard p.st == nil, ["US", "CA", "AU"].contains(p.cc) else { return p }
                 var q = p
                 q.st = Store.defaults().first(where: { $0.name == p.name && $0.zone == p.zone })?.st ?? Catalog.shared.match(p)?.st
                 return q
             }
+            // Older builds had no limit: keep only the first pins.
+            var n = 0
+            for i in loaded.indices where loaded[i].pinned { n += 1; if n > Store.maxPins { loaded[i].pinned = false } }
+            places = loaded
         } else {
             places = Store.defaults()
         }
@@ -117,8 +121,10 @@ final class Store: ObservableObject {
         timer?.invalidate()
         now = Date()
         let next = Calendar.current.nextDate(after: now, matching: DateComponents(second: 0), matchingPolicy: .nextTime) ?? now.addingTimeInterval(60)
-        let t = Timer(fire: next, interval: 60, repeats: true) { [weak self] _ in
-            Task { @MainActor in self?.now = Date(); self?.loadWeather() }
+        // One-shot, rescheduled from the wall clock each minute: a repeating timer drifts, and after a
+        // day or two awake it fired just before :00 and the menu bar showed the previous minute.
+        let t = Timer(fire: next.addingTimeInterval(0.05), interval: 0, repeats: false) { [weak self] _ in
+            Task { @MainActor in self?.schedule(); self?.loadWeather() }
         }
         t.tolerance = 0.5
         RunLoop.main.add(t, forMode: .common)
@@ -446,8 +452,17 @@ final class Store: ObservableObject {
         note = "Added \(p.name)."
     }
 
+    /// A wider menu bar item is hidden by macOS beside the notch, and with no Dock icon the app
+    /// could then not be reached at all, so at most three cities go in the menu bar.
+    static let maxPins = 3
+
     func togglePin(_ p: Place) {
-        if let i = places.firstIndex(where: { $0.id == p.id }) { places[i].pinned.toggle() }
+        guard let i = places.firstIndex(where: { $0.id == p.id }) else { return }
+        if !places[i].pinned && places.filter(\.pinned).count >= Store.maxPins {
+            note = "Up to \(Store.maxPins) cities fit in the menu bar. Unpin one first."
+            return
+        }
+        places[i].pinned.toggle()
     }
 
     func remove(_ p: Place) { guard places.count > 1 else { return }; places.removeAll { $0.id == p.id } }
@@ -485,11 +500,13 @@ final class Store: ObservableObject {
         }
         let list = places.map { p -> String in
             var s = tok(p.name)
-            if let la = p.lat, let lo = p.lon { s += "@\(la):\(lo):\(p.zone)" + (p.cc.isEmpty ? "" : ":\(p.cc)") }
+            // Always the long form: a bare "GMT" reads as London on the site, and old zone names are dropped.
+            s += "@" + (p.lat.map { "\($0)" } ?? "") + ":" + (p.lon.map { "\($0)" } ?? "") + ":\(p.zone)" + (p.cc.isEmpty ? "" : ":\(p.cc)")
             if let l = p.label, !l.isEmpty { s += "~" + (l.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? "") }
             return s
         }.joined(separator: ",")
-        var hash = list.addingPercentEncoding(withAllowedCharacters: .urlFragmentAllowed) ?? list
+        // '%' allowed: names and nicknames are already percent-encoded above, and the site decodes once.
+        var hash = list.addingPercentEncoding(withAllowedCharacters: CharacterSet.urlFragmentAllowed.union(CharacterSet(charactersIn: "%"))) ?? list
         if planning, let first = places.first {
             hash += "&d=" + formatter(first.zone, "yyyy-MM-dd").string(from: instant) + "&t=" + formatter(first.zone, "HH:mm").string(from: instant)
         }

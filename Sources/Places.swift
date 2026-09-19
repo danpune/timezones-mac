@@ -70,6 +70,7 @@ final class Catalog {
     static func norm(_ s: String) -> String {
         s.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .init(identifier: "en_US"))
             .replacingOccurrences(of: ".", with: "").replacingOccurrences(of: "'", with: "")
+            .replacingOccurrences(of: "\u{2019}", with: "").replacingOccurrences(of: "\u{2018}", with: "").replacingOccurrences(of: "`", with: "")
             .trimmingCharacters(in: .whitespaces)
     }
 
@@ -99,10 +100,11 @@ final class Catalog {
         if let z = Catalog.zoneWords[k] {
             add(city(inZone: z) ?? Place(name: z == "Etc/UTC" ? "UTC" : Place.zoneCity(z), zone: z, lat: nil, lon: nil, cc: ""))
         }
-        for c in countries where c.key == k || (k.count >= 3 && c.key.hasPrefix(k)) {
-            if let cap = rows.first(where: { $0.place.cc == c.cc && $0.capital }) ?? rows.first(where: { $0.place.cc == c.cc }) { add(cap.place) }
-        }
+        let capital = { (cc: String) in (self.rows.first(where: { $0.place.cc == cc && $0.capital }) ?? self.rows.first(where: { $0.place.cc == cc }))?.place }
+        for c in countries where c.key == k { if let p = capital(c.cc) { add(p) } }
         for r in rows where r.key.hasPrefix(k) { add(r.place); if out.count >= limit { break } }
+        // partial country names after cities: "par" is Paris before Paraguay's capital
+        if k.count >= 3 { for c in countries where c.key.hasPrefix(k) { if let p = capital(c.cc) { add(p) } } }
         if k.count >= 3 { for r in rows where r.key.contains(k) { add(r.place); if out.count >= limit { break } } }
         // IANA zones as a last resort ("Etc/UTC", "Asia/Dubai"): no coordinates, so no sky colour.
         for z in TimeZone.knownTimeZoneIdentifiers where Catalog.norm(Place.zoneCity(z)).hasPrefix(k) || Catalog.norm(z) == k {
