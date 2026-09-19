@@ -119,8 +119,10 @@ final class Updater: ObservableObject {
     }
 
     /// Quits, then a tiny shell waits for this process to end and opens the new copy.
+    /// Five tries: right after the bundle is swapped, LaunchServices sometimes takes a moment to open it.
     private func relaunch() {
-        let wait = "while kill -0 \(ProcessInfo.processInfo.processIdentifier) 2>/dev/null; do sleep 0.2; done; open \"$0\""
+        let wait = "while kill -0 \(ProcessInfo.processInfo.processIdentifier) 2>/dev/null; do sleep 0.2; done; "
+            + "for i in 1 2 3 4 5; do open \"$0\" && sleep 2 && pgrep -x TimeZones >/dev/null && break; sleep 1; done"
         _ = try? Process.run(URL(fileURLWithPath: "/bin/sh"), arguments: ["-c", wait, Bundle.main.bundlePath])
         NSApp.terminate(nil)
     }

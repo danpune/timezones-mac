@@ -466,17 +466,21 @@ final class Store: ObservableObject {
         note = "Added \(p.name)."
     }
 
-    /// A wider menu bar item is hidden by macOS beside the notch, and with no Dock icon the app
-    /// could then not be reached at all, so at most three cities go in the menu bar.
-    static let maxPins = 3
+    /// Too wide an item is tucked away by macOS, and with no Dock icon the app could then only be
+    /// reached with ⌃⌥T, so the menu bar holds six cities at most and says when width is a risk.
+    static let maxPins = 6
 
     func togglePin(_ p: Place) {
         guard let i = places.firstIndex(where: { $0.id == p.id }) else { return }
-        if !places[i].pinned && places.filter(\.pinned).count >= Store.maxPins {
-            note = "Up to \(Store.maxPins) cities fit in the menu bar. Unpin one first."
+        let pinned = places.filter(\.pinned).count
+        if !places[i].pinned && pinned >= Store.maxPins {
+            note = "The menu bar holds \(Store.maxPins) cities. Unpin one first."
             return
         }
         places[i].pinned.toggle()
+        if places[i].pinned && pinned >= 3 {
+            note = "\(pinned + 1) cities in the menu bar: if it runs out of room, macOS hides them behind its « arrow."
+        }
     }
 
     func remove(_ p: Place) { guard places.count > 1 else { return }; places.removeAll { $0.id == p.id } }
