@@ -80,6 +80,10 @@ final class Catalog {
             guard out.count < limit, seen.insert(p.name + "|" + p.zone).inserted else { return }
             out.append(p)
         }
+        // Zone words people type: "PST", "Eastern", "IST". Each resolves to that zone's biggest city.
+        if let z = Catalog.zoneWords[k] {
+            add(city(inZone: z) ?? Place(name: z == "Etc/UTC" ? "UTC" : Place.zoneCity(z), zone: z, lat: nil, lon: nil, cc: ""))
+        }
         for c in countries where c.key == k || (k.count >= 3 && c.key.hasPrefix(k)) {
             if let cap = rows.first(where: { $0.place.cc == c.cc && $0.capital }) ?? rows.first(where: { $0.place.cc == c.cc }) { add(cap.place) }
         }
@@ -91,6 +95,18 @@ final class Catalog {
         }
         return out
     }
+
+    static let zoneWords: [String: String] = {
+        var m: [String: String] = [:]
+        for (z, ws) in ["America/New_York": ["est", "edt", "et", "eastern", "eastern time"],
+                        "America/Chicago": ["cst", "cdt", "ct", "central", "central time"],
+                        "America/Denver": ["mst", "mdt", "mt", "mountain", "mountain time"],
+                        "America/Los_Angeles": ["pst", "pdt", "pt", "pacific", "pacific time"],
+                        "Asia/Kolkata": ["ist", "india time"], "Europe/London": ["gmt", "bst", "uk time"],
+                        "Europe/Paris": ["cet", "cest"], "Asia/Tokyo": ["jst"], "Australia/Sydney": ["aest", "aedt"],
+                        "Etc/UTC": ["utc", "zulu"]] { for w in ws { m[w] = z } }
+        return m
+    }()
 
     /// The biggest city in a zone, for the viewer's own place.
     func city(inZone z: String) -> Place? { rows.first(where: { $0.place.zone == z })?.place }

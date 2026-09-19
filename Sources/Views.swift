@@ -27,6 +27,8 @@ struct Panel: View {
                 }
             }
 
+            search
+
             if let o = store.overlap {
                 let parts = o.split(separator: ":", maxSplits: 1).map(String.init)
                 HStack(alignment: .top, spacing: 8) {
@@ -48,7 +50,7 @@ struct Panel: View {
 
             Divider()
             HStack {
-                Button(store.editing ? "Done" : "Edit cities") { store.editing.toggle(); store.query = "" }
+                Button(store.editing ? "Done" : "Nicknames and pins") { store.editing.toggle() }
                 Spacer()
                 Picker("Clock", selection: $store.h24) { Text("12h").tag(false); Text("24h").tag(true) }
                     .pickerStyle(.segmented).labelsHidden().frame(width: 92)
@@ -76,15 +78,30 @@ struct Panel: View {
         }
     }
 
-    @ViewBuilder private var editor: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            TextField("Add a city or country", text: $store.query)
-                .textFieldStyle(.roundedBorder)
-                .onSubmit { if let p = Catalog.shared.search(store.query).first { store.add(p); store.query = "" } }
+    // Always visible: type a city, a country ("Thailand" gives Bangkok) or a zone word ("PST", "IST").
+    @ViewBuilder private var search: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 6) {
+                Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
+                TextField("Add a city, country or time zone", text: $store.query)
+                    .textFieldStyle(.plain)
+                    .onSubmit { if let p = Catalog.shared.search(store.query).first { store.add(p) } }
+                    .onExitCommand { store.query = "" }
+                if !store.query.isEmpty {
+                    Button { store.query = "" } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary) }
+                        .buttonStyle(.plain).help("Clear")
+                }
+            }
+            .padding(.horizontal, 8).padding(.vertical, 6)
+            .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 7))
             let results = Catalog.shared.search(store.query)
+            if !store.query.trimmingCharacters(in: .whitespaces).isEmpty && results.isEmpty {
+                Text("No match. Try a city, a country, or a zone like PST.").font(.caption).foregroundStyle(.secondary)
+            }
             ForEach(Array(results.enumerated()), id: \.offset) { _, p in
-                Button { store.add(p); store.query = "" } label: {
-                    HStack {
+                let have = store.places.contains { $0.zone == p.zone && $0.name == p.name }
+                Button { store.add(p) } label: {
+                    HStack(spacing: 8) {
                         Text(p.flag.isEmpty ? "🌐" : p.flag)
                         VStack(alignment: .leading, spacing: 0) {
                             Text(p.name)
@@ -92,11 +109,20 @@ struct Panel: View {
                         }
                         Spacer()
                         Text(store.gap(p, at: Date())).font(.caption).foregroundStyle(.secondary)
+                        Image(systemName: have ? "checkmark" : "plus.circle").foregroundStyle(have ? Color.secondary : Color.accentColor)
                     }
+                    .padding(.vertical, 2)
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .disabled(have)
+                .help(have ? "Already in your list" : "Add \(p.name)")
             }
+        }
+    }
+
+    @ViewBuilder private var editor: some View {
+        VStack(alignment: .leading, spacing: 6) {
             List {
                 ForEach($store.places) { $p in
                     HStack(spacing: 8) {
@@ -114,7 +140,7 @@ struct Panel: View {
                 .onMove { store.places.move(fromOffsets: $0, toOffset: $1) }
             }
             .frame(height: CGFloat(min(store.places.count, 6)) * 32 + 8)
-            Text("Drag a row to reorder. A nickname like “Mom” shows on the tile and in the menu bar.")
+            Text("A nickname like “Mom” shows in the list and in the menu bar.")
                 .font(.caption2).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
         }
     }
@@ -141,6 +167,10 @@ struct Row: View {
                 Text(sub).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
             }
             Spacer(minLength: 6)
+            if store.hoverID == place.id && !dragging && store.places.count > 1 {
+                Button { store.remove(place) } label: { Image(systemName: "xmark.circle.fill").font(.system(size: 14)) }
+                    .buttonStyle(.plain).foregroundStyle(.secondary).help("Remove \(place.shown)")
+            }
             // Right-aligned with fixed-width digits and a fixed AM/PM slot, so every colon lines up.
             HStack(alignment: .firstTextBaseline, spacing: 3) {
                 Text(parts[0]).font(.system(size: 20, weight: .bold)).monospacedDigit()
@@ -167,7 +197,10 @@ struct Row: View {
             .onChanged { store.drag(place.id, by: $0.translation.height) }
             .onEnded { _ in store.endDrag() })
         .onTapGesture { store.togglePin(place) }
-        .onHover { inside in if inside { NSCursor.openHand.push() } else { NSCursor.pop() } }
+        .onHover { inside in
+            if inside { NSCursor.openHand.push(); store.hoverID = place.id }
+            else { NSCursor.pop(); if store.hoverID == place.id { store.hoverID = nil } }
+        }
         .help("Drag to reorder. Click to \(place.pinned ? "hide it from" : "show it in") the menu bar.")
         .contextMenu {
             Button(place.pinned ? "Hide from menu bar" : "Show in menu bar") { store.togglePin(place) }

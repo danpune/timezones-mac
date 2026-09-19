@@ -13,6 +13,7 @@ final class Store: ObservableObject {
     @Published var editing = false
     @Published var query = ""
     @Published var note: String?
+    @Published var hoverID: UUID?
     // Mouse reordering in the table: the dragged row follows the pointer and the list reorders
     // each time it crosses half a row, so the order is right the moment the mouse is released.
     @Published var dragID: UUID?
@@ -164,8 +165,10 @@ final class Store: ObservableObject {
     // MARK: actions
 
     func add(_ p: Place) {
+        query = ""
         guard !places.contains(where: { $0.zone == p.zone && $0.name == p.name }) else { return }
         places.append(p)
+        note = "Added \(p.name)."
     }
 
     func togglePin(_ p: Place) {

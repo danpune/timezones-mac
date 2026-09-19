@@ -35,7 +35,12 @@ struct Snap {
         store.h24 = true; shot("3-24h"); store.h24 = false
         store.offsetMin = 12 * 60; shot("4-planning")
         store.offsetMin = 0
-        store.editing = true; store.query = "nel"; shot("5-editing")
+        store.query = "nel"; shot("5-search")
+        print("search pst:", Catalog.shared.search("pst").map { $0.name + " " + $0.zone })
+        print("search ist:", Catalog.shared.search("ist").prefix(2).map { $0.name + " " + $0.zone })
+        print("search utc:", Catalog.shared.search("utc").prefix(1).map { $0.name + " " + $0.zone })
+        store.query = ""; store.editing = true; shot("5b-editing")
+        store.hoverID = store.places[1].id; store.editing = false; shot("5c-hover"); store.hoverID = nil
         store.editing = false; store.query = ""
         let before = store.places.map(\.name)
         store.drag(store.places[4].id, by: -100)   // London up two rows, still held
