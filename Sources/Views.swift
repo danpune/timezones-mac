@@ -19,6 +19,7 @@ struct Panel: View {
                     }
                 }
             }
+            .frame(height: 22)
 
             if store.askLogin {
                 HStack(spacing: 8) {
@@ -40,12 +41,15 @@ struct Panel: View {
                 let table = VStack(spacing: 0) {
                     ForEach(Array(store.places.enumerated()), id: \.element.id) { i, p in
                         if i > 0 { Divider().padding(.leading, 4) }
-                        Row(place: p, at: t)
+                        Row(place: p, at: t).id(p.id)
                     }
                 }
                 if store.places.count > 7 {
                     // no scroller gutter (it squeezed the rows); half a row peeking out says there is more
-                    ScrollView(showsIndicators: false) { table }.frame(height: 7.5 * Store.rowStep)
+                    ScrollViewReader { proxy in
+                        ScrollView(showsIndicators: false) { table }.frame(height: 7.5 * Store.rowStep)
+                            .onChange(of: store.places.count) { _ in if let id = store.places.last?.id { withAnimation { proxy.scrollTo(id) } } }
+                    }
                 } else {
                     table
                 }
@@ -73,6 +77,7 @@ struct Panel: View {
                     DatePicker("Day", selection: Binding(get: { t }, set: { store.setDay($0) }), displayedComponents: .date)
                         .labelsHidden().datePickerStyle(.field).fixedSize()
                     TextField(store.clock(home, t), text: $store.timeText)
+                        .accessibilityLabel("Type a time, your time")
                         .textFieldStyle(.roundedBorder).frame(width: 84)
                         .onSubmit { if !store.applyTyped() { store.note = "Try a time like 3pm, 9:30 am or 15:30." } }
                         .help("Type a time, like 3pm or 15:30, then press Return")
@@ -159,9 +164,13 @@ struct Panel: View {
                 TextField("Add a city, country or time zone", text: $store.query)
                     .textFieldStyle(.plain)
                     .onSubmit { if let p = Catalog.shared.search(store.query).first { store.add(p) } }
-                    .onExitCommand { if store.query.isEmpty { HotKey.togglePanel() } else { store.query = "" } }
+                    .onExitCommand {
+                        if !store.query.isEmpty { store.query = "" }
+                        else if store.planning { store.planned = nil; store.timeText = "" }
+                        else { HotKey.closePanel() }
+                    }
                 if !store.query.isEmpty {
-                    Button { store.query = "" } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary) }
+                    Button { store.query = "" } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary).accessibilityLabel("Clear search") }
                         .buttonStyle(.plain).help("Clear")
                 }
             }
@@ -202,12 +211,14 @@ struct Panel: View {
                     HStack(spacing: 8) {
                         Text(p.flag.isEmpty ? "🌐" : p.flag)
                         Text(p.name).lineLimit(1)
-                        TextField("Nickname", text: Binding(get: { p.label ?? "" }, set: { p.label = $0.isEmpty ? nil : String($0.prefix(24)) }))
+                        TextField("Nickname", text: Binding(get: { p.label ?? "" }, set: { p.label = $0.trimmingCharacters(in: .whitespaces).isEmpty ? nil : String($0.prefix(24)) }))
+                            .accessibilityLabel("Nickname for \(p.name)")
                             .textFieldStyle(.roundedBorder).frame(width: 90)
                         Spacer()
-                        Button { store.togglePin(p) } label: { Image(systemName: p.pinned ? "pin.fill" : "pin") }
+                        Button { store.togglePin(p) } label: { Image(systemName: p.pinned ? "pin.fill" : "pin")
+                            .accessibilityLabel(p.pinned ? "Hide \(p.name) from the menu bar" : "Show \(p.name) in the menu bar") }
                             .buttonStyle(.borderless).help(p.pinned ? "Hide from the menu bar" : "Show in the menu bar")
-                        Button { store.remove(p) } label: { Image(systemName: "trash") }
+                        Button { store.remove(p) } label: { Image(systemName: "trash").accessibilityLabel("Remove \(p.name)") }
                             .buttonStyle(.borderless).disabled(store.places.count == 1).help("Remove")
                     }
                 }
@@ -252,13 +263,13 @@ struct Row: View {
                     .font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
             }
             Spacer(minLength: 6)
-            if store.hoverID == place.id && !dragging && store.places.count > 1 {
-                Button { store.remove(place) } label: { Image(systemName: "xmark.circle.fill").font(.system(size: 14)) }
-                    .buttonStyle(.plain).foregroundStyle(.secondary).help("Remove \(place.shown)")
-            }
-            // Weather in its own column, so temperatures line up like the times.
+            // Weather in its own column, so temperatures line up like the times. While hovering, the
+            // same slot holds the remove button, so no column shifts and no text gets cut off.
             HStack(spacing: 3) {
-                if let w = weather {
+                if store.hoverID == place.id && !dragging && store.places.count > 1 {
+                    Button { store.remove(place) } label: { Image(systemName: "xmark.circle.fill").font(.system(size: 15)) }
+                        .buttonStyle(.plain).help("Remove \(place.shown)").accessibilityLabel("Remove \(place.shown)")
+                } else if let w = weather {
                     Image(systemName: w.symbol).symbolRenderingMode(.hierarchical).font(.system(size: 13))
                     Text("\(w.temp)°").font(.system(size: 13, weight: .medium)).monospacedDigit()
                 }

@@ -42,7 +42,8 @@ enum Sky {
                     let m = l.addingTimeInterval(h.timeIntervalSince(l) / 2)
                     if (sunAlt(m, lat: lat, lon: lon) < h0) == (prev < h0) { l = m } else { h = m }
                 }
-                return (prev < h0, h)
+                // rounded to the minute, as the website does (formatting alone would truncate)
+                return (prev < h0, Date(timeIntervalSince1970: (h.timeIntervalSince1970 / 60).rounded() * 60))
             }
             lo = hi; prev = a
         }

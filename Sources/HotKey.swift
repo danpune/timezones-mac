@@ -25,18 +25,6 @@ enum HotKey {
         ref = nil
     }
 
-    /// There is no public API to open a MenuBarExtra, so click its status item button.
-    static func togglePanel() {
-        NSApp.activate(ignoringOtherApps: true)
-        for w in NSApp.windows where String(describing: type(of: w)).contains("StatusBar") {
-            if let b = button(in: w.contentView) { b.performClick(nil); return }
-        }
-    }
-
-    private static func button(in v: NSView?) -> NSStatusBarButton? {
-        guard let v else { return nil }
-        if let b = v as? NSStatusBarButton { return b }
-        for s in v.subviews { if let b = button(in: s) { return b } }
-        return nil
-    }
+    @MainActor static func togglePanel() { StatusController.shared?.toggle() }
+    @MainActor static func closePanel() { StatusController.shared?.close() }
 }

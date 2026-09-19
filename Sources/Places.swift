@@ -21,6 +21,7 @@ struct Place: Codable, Identifiable, Hashable {
     // Menu bar code: a rename as typed, else "SF" / "NY" for two words, "MUM" / "LON" for one.
     var short: String {
         if let l = label?.trimmingCharacters(in: .whitespaces), !l.isEmpty { return String(l.prefix(8)) }
+        if cc.isEmpty, name.hasPrefix("UTC") { return name }   // "UTC+5:30", not a bare "UTC"
         let words = name.split(whereSeparator: { $0 == " " || $0 == "-" })
         if words.count > 1 { return words.prefix(3).compactMap(\.first).map(String.init).joined().uppercased() }
         return String(name.prefix(3)).uppercased()
@@ -86,11 +87,17 @@ final class Catalog {
             out.append(p)
         }
         // "UTC+5:30", "GMT-3", "+9": a fixed offset (no daylight saving, no sky colour).
-        if let m = k.wholeMatch(of: #/(?:utc|gmt)?\s*([+\-\u2212])\s*(\d{1,2})(?:[:.]?(\d{2}))?/#), let h = Int(m.2), h <= 14 {
+        if let m = k.wholeMatch(of: #/(?:utc|gmt)?\s*([+\-\u2212])\s*([0-9]{1,2})(?:[:.]?([0-9]{2}))?/#), let h = Int(m.2), h <= 14,
+           (m.3.flatMap { Int($0) } ?? 0) <= 59 {
             let mins = h * 60 + (m.3.flatMap { Int($0) } ?? 0), sign = m.1 == "+" ? 1 : -1
-            let whole = mins % 60 == 0 && h <= 12
+            let whole = mins % 60 == 0 && h <= (sign > 0 ? 14 : 12)
             // Etc/GMT names are sign-inverted (Etc/GMT-9 is UTC+9) but are real IANA zones the website accepts.
-            let zone = whole ? (mins == 0 ? "Etc/UTC" : "Etc/GMT\(sign > 0 ? "-" : "+")\(h)") : TimeZone(secondsFromGMT: sign * mins * 60)?.identifier
+            // Half and quarter hours have no Etc name: use a real zone with that fixed offset (+5:30 is Asia/Kolkata).
+            let fixed = TimeZone.knownTimeZoneIdentifiers.first { id in
+                guard let z = TimeZone(identifier: id) else { return false }
+                return z.secondsFromGMT() == sign * mins * 60 && z.nextDaylightSavingTimeTransition == nil && id.contains("/") && !id.hasPrefix("Etc/")
+            }
+            let zone = whole ? (mins == 0 ? "Etc/UTC" : "Etc/GMT\(sign > 0 ? "-" : "+")\(h)") : fixed
             if let zone, TimeZone(identifier: zone) != nil {
                 let label = "UTC" + (mins == 0 ? "" : (sign > 0 ? "+" : "\u{2212}") + "\(h)" + (mins % 60 == 0 ? "" : String(format: ":%02d", mins % 60)))
                 add(Place(name: label, zone: zone, lat: nil, lon: nil, cc: ""))

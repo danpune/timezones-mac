@@ -48,6 +48,7 @@ echo "Built $APP"
 
 if [[ "${1:-}" == "install" ]]; then
   pkill -x "$EXE" 2>/dev/null || true
+  for _ in {1..50}; do pgrep -x "$EXE" >/dev/null || break; sleep 0.1; done   # let the old copy quit before relaunching
   rm -rf "/Applications/$NAME.app"
   cp -R "$APP" /Applications/
   open "/Applications/$NAME.app"

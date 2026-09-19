@@ -25,10 +25,13 @@ final class Store: ObservableObject {
             guard let n = note else { return }
             NSAccessibility.post(element: NSApp as Any, notification: .announcementRequested,
                                  userInfo: [.announcement: n, .priority: NSAccessibilityPriorityLevel.high.rawValue])
-            Task { @MainActor [weak self] in try? await Task.sleep(nanoseconds: 4_000_000_000); if self?.note == n { self?.note = nil } }
+            noteToken += 1
+            let token = noteToken
+            Task { @MainActor [weak self] in try? await Task.sleep(nanoseconds: 4_000_000_000); if self?.noteToken == token { self?.note = nil } }
         }
     }
     private var closedAt: Date?
+    private var noteToken = 0
     @Published var hoverID: UUID?
     // Mouse reordering in the table: the dragged row follows the pointer and the list reorders
     // each time it crosses half a row, so the order is right the moment the mouse is released.
@@ -75,19 +78,23 @@ final class Store: ObservableObject {
         }
         // A plan is for now-ish: reopening the panel more than 5 minutes after closing it goes back to live,
         // so a glance never shows an old plan as if it were the current time.
-        nc.addObserver(forName: NSWindow.didResignKeyNotification, object: nil, queue: .main) { [weak self] _ in
-            Task { @MainActor in self?.closedAt = Date() }
-        }
-        nc.addObserver(forName: NSWindow.didBecomeKeyNotification, object: nil, queue: .main) { [weak self] _ in
-            Task { @MainActor in
-                guard let self, let c = self.closedAt, Date().timeIntervalSince(c) > 300 else { return }
-                self.planned = nil; self.timeText = ""; self.query = ""
-            }
-        }
         // A sleeping Mac freezes timers; catch up the moment it wakes.
         ws.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [weak self] _ in
-            Task { @MainActor in self?.schedule() }
+            Task { @MainActor in self?.schedule(); self?.loadWeather() }
         }
+        loadWeather()
+    }
+
+    /// Set by the status controller: whether the panel is on screen.
+    var panelShown: () -> Bool = { false }
+
+    func panelClosed() { closedAt = Date() }
+
+    /// Reopened more than 5 minutes after closing: back to live, list view, empty search, so a
+    /// glance never shows an old plan or the editor instead of the times.
+    func panelOpening() {
+        guard let c = closedAt, Date().timeIntervalSince(c) > 300 else { return }
+        planned = nil; timeText = ""; query = ""; editing = false
     }
 
     // Same defaults as the website. The Mac's own city leads if none of them shares its zone,
@@ -157,7 +164,7 @@ final class Store: ObservableObject {
     /// "3pm", "3:30 pm", "15:30", "1530", "9". Same rules as the website's time box.
     static func parseTime(_ v: String) -> Int? {
         let s = v.lowercased().replacingOccurrences(of: " ", with: "").replacingOccurrences(of: ".", with: "")
-        guard let m = s.wholeMatch(of: #/(\d{1,2})(?::?(\d{2}))?(am|pm|a|p)?/#) else { return nil }
+        guard let m = s.wholeMatch(of: #/([0-9]{1,2})(?::?([0-9]{2}))?(am|pm|a|p)?/#) else { return nil }
         var h = Int(m.1) ?? 0
         let mi = m.2.flatMap { Int($0) } ?? 0
         guard mi <= 59 else { return nil }
@@ -173,7 +180,7 @@ final class Store: ObservableObject {
         guard let m = Store.parseTime(timeText) else { return timeText.isEmpty }
         let wasLive = !planning
         setMinuteOfDay(m); timeText = ""
-        if wasLive, let p = planned, p < now { planned = Calendar.current.date(byAdding: .day, value: 1, to: p) }
+        if wasLive, let p = planned, p < now.addingTimeInterval(-60) { planned = Calendar.current.date(byAdding: .day, value: 1, to: p) }
         return true
     }
 
@@ -244,11 +251,16 @@ final class Store: ObservableObject {
     /// ← → move the planned time 15 minutes, Esc returns to now: only when no text field is being typed in.
     func installKeys() {
         NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] e in
-            guard let self, !(NSApp.keyWindow?.firstResponder is NSText) else { return e }
+            guard let self, self.panelShown() else { return e }
+            let fr = NSApp.keyWindow?.firstResponder
+            if let t = fr as? NSText, !t.string.isEmpty { return e }        // typing: the field keeps its keys
             switch e.keyCode {
-            case 123: self.nudge(-15); return nil   // ←
-            case 124: self.nudge(15); return nil    // →
-            case 53: if self.planning { self.planned = nil; self.timeText = "" } else { HotKey.togglePanel() }; return nil   // Esc
+            case 123, 124:
+                if fr is NSControl && !(fr is NSTextField) { return e }    // date field, slider, segmented controls
+                self.nudge(e.keyCode == 123 ? -15 : 15); return nil
+            case 53:
+                if self.planning { self.planned = nil; self.timeText = "" } else { HotKey.closePanel() }
+                return nil
             default: return e
             }
         }
@@ -475,7 +487,11 @@ final class Store: ObservableObject {
     /// Click the shared-time note to plan its first hour; while live, a time already gone means tomorrow.
     func planShared() {
         guard let s = shared, let first = s.runs.first, let t = s.hours[first.0] else { return }
-        planned = !planning && t < now ? Calendar.current.date(byAdding: .day, value: 1, to: t) : t
+        if planning || t >= now { planned = t; return }
+        // today's shared hours have started: a later run today, else tomorrow's own window
+        if let later = s.runs.compactMap({ s.hours[$0.0] }).first(where: { $0 >= now }) { planned = later; return }
+        planned = Calendar.current.date(byAdding: .day, value: 1, to: Calendar.current.startOfDay(for: now))
+        if let s2 = shared, let f = s2.runs.first, let t2 = s2.hours[f.0] { planned = t2 } else { planned = nil }
     }
 
     func drag(_ id: UUID, by dy: CGFloat) {

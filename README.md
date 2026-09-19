@@ -4,7 +4,8 @@ A native macOS menu bar app for the [Time Zones](https://danpune.github.io/timez
 Pinned cities sit next to the macOS clock (`MUM 9:42 AM`); click it for every city as a tile
 coloured by that city's real sky, the hours everyone is awake or at work, and a slider to plan a time.
 
-- SwiftUI `MenuBarExtra`, no Dock icon, macOS 13 or later, Apple silicon and Intel
+- SwiftUI panel in an `NSStatusItem` + `NSPopover` (not `MenuBarExtra`, which can't be opened from code on
+  macOS 27), no Dock icon, macOS 13 or later, Apple silicon and Intel. Opening the app again shows the panel.
 - Same sun maths and sky colours as the website; ~6,300 searchable cities (GeoNames, CC BY 4.0)
 - Click a tile to show or hide that city in the menu bar; **Edit cities** to add, rename, reorder, remove
 - Weather per city from Open-Meteo (free, CC BY 4.0), °F or °C, one request for all cities, hourly

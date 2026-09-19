@@ -1,5 +1,6 @@
 // Renders the panel off-screen to PNGs, so the UI can be checked without screen-recording access.
-//   swiftc ... Sources/{Sky,Places,Store,Views}.swift Tests/Snap.swift -o build/snap && build/snap out/
+//   swiftc -swift-version 5 -parse-as-library Sources/{Sky,Places,Store,Views,HotKey,States,StatusController}.swift \
+//     Tests/Snap.swift -o build/snap  (then copy Resources/cities.txt and Resources/flags next to it)
 import AppKit
 import SwiftUI
 
