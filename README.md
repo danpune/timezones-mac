@@ -22,7 +22,7 @@ A free companion to the [Time Zones](https://danpune.github.io/timezones/) websi
 **Updates:** from version 1.3 on, the app keeps itself up to date. It asks GitHub for the newest version when
 it starts and every 12 hours, and installs it quietly while the panel is closed, checking first that the
 download was signed by this project. Nothing to click, and no "Open Anyway" again; the panel says "Updated to
-…" afterwards. If the quiet install can't go ahead, the panel offers an **Update** button instead.
+…" afterwards, with a blue dot on the menu bar item until you have seen it. If the quiet install can't go ahead, the panel offers an **Update** button instead.
 On an older version, download the zip above once to get this.
 
 ## What you see

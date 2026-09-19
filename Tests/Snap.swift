@@ -40,6 +40,10 @@ struct Snap {
         Updater.shared.checkIfDue()
         for _ in 0..<40 where Updater.shared.release == nil { RunLoop.main.run(until: Date().addingTimeInterval(0.25)) }
         print("update:", Updater.shared.release?.version ?? "none")
+        let dotted = StatusController.title(store.menuTitle(), dot: true)
+        precondition(dotted.string == store.menuTitle() + " ●", "a blue dot marks a fresh update in the menu bar")
+        precondition(dotted.attribute(.foregroundColor, at: dotted.length - 1, effectiveRange: nil) as? NSColor == .systemBlue)
+        print("menu bar after an update:", dotted.string)
         shot("2b-update")
         store.h24 = true; shot("3-24h"); store.h24 = false
         store.setMinuteOfDay(9 * 60, on: Calendar.current.date(from: DateComponents(year: 2026, month: 10, day: 27))); shot("4-planning")

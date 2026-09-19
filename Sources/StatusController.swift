@@ -10,7 +10,7 @@ final class StatusController: NSObject, NSApplicationDelegate, NSPopoverDelegate
     let store = Store()
     private var item: NSStatusItem!
     private let popover = NSPopover()
-    private var changes: AnyCancellable?
+    private var changes: Set<AnyCancellable> = []
 
     func applicationDidFinishLaunching(_ note: Notification) {
         StatusController.shared = self
@@ -23,25 +23,33 @@ final class StatusController: NSObject, NSApplicationDelegate, NSPopoverDelegate
         popover.behavior = .transient
         popover.delegate = self
         store.panelShown = { [weak self] in self?.popover.isShown ?? false }
-        changes = store.objectWillChange.sink { [weak self] _ in DispatchQueue.main.async { self?.refresh() } }
+        for source in [store.objectWillChange, Updater.shared.objectWillChange] {
+            source.sink { [weak self] _ in DispatchQueue.main.async { self?.refresh() } }.store(in: &changes)
+        }
         refresh()
         Updater.shared.idle = { [weak self] in !(self?.popover.isShown ?? true) }
         Updater.shared.checkIfDue()
     }
 
-    /// Pinned cities next to the macOS clock ("🇮🇳 MUM 9:42a"); a globe when none is pinned.
+    /// Pinned cities next to the macOS clock ("🇮🇳 MUM 9:42a"); a globe when none is pinned. A blue dot
+    /// after an update, until the panel is opened and the "Updated" line has been seen.
     private func refresh() {
         guard let b = item?.button else { return }
-        let t = store.menuTitle()
-        if t.isEmpty {
-            b.attributedTitle = NSAttributedString(string: "")
-            b.image = NSImage(systemSymbolName: "globe", accessibilityDescription: "Time Zones")
-        } else {
-            b.image = nil
-            let size = NSFont.menuBarFont(ofSize: 0).pointSize
-            b.attributedTitle = NSAttributedString(string: t, attributes: [.font: NSFont.monospacedDigitSystemFont(ofSize: size, weight: .regular)])
+        let t = store.menuTitle(), updated = Updater.shared.updated
+        b.image = t.isEmpty ? NSImage(systemSymbolName: "globe", accessibilityDescription: "Time Zones") : nil
+        b.attributedTitle = StatusController.title(t, dot: updated != nil)
+        b.setAccessibilityLabel((t.isEmpty ? "Time Zones" : "Time Zones, " + store.menuTitle(short: false))
+                                + (updated.map { ", updated to version \($0)" } ?? ""))
+    }
+
+    static func title(_ text: String, dot: Bool) -> NSAttributedString {
+        let size = NSFont.menuBarFont(ofSize: 0).pointSize
+        let s = NSMutableAttributedString(string: text, attributes: [.font: NSFont.monospacedDigitSystemFont(ofSize: size, weight: .regular)])
+        if dot {
+            s.append(NSAttributedString(string: text.isEmpty ? "●" : " ●",
+                                        attributes: [.font: NSFont.systemFont(ofSize: size * 0.62), .foregroundColor: NSColor.systemBlue]))
         }
-        b.setAccessibilityLabel(t.isEmpty ? "Time Zones" : "Time Zones, " + store.menuTitle(short: false))
+        return s
     }
 
     @objc private func clicked() { toggle() }
