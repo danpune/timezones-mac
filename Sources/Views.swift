@@ -42,7 +42,11 @@ struct Panel: View {
 
             search
 
-            if let o = store.overlap { note(o, Color(red: 0.086, green: 0.639, blue: 0.290)) }
+            if let o = store.overlap {
+                let good = !(store.shared?.runs.isEmpty ?? true)
+                Button { store.planShared() } label: { note(o, good ? Color(red: 0.086, green: 0.639, blue: 0.290) : .orange) }
+                    .buttonStyle(.plain).disabled(!good).help(good ? "Plan this time" : "")
+            }
             if let c = store.clockNote { note(c, Color(red: 0.851, green: 0.467, blue: 0.024)) }
 
             // Plan a moment: pick a day, type a time ("3pm", "15:30") or drag the slider through the day.
@@ -59,10 +63,23 @@ struct Panel: View {
                         .controlSize(.small).help("Copy every city's time, ready to paste into a message")
                 }
                 Slider(value: Binding(get: { store.minuteOfDay }, set: { store.setMinuteOfDay(Int(($0 / 15).rounded()) * 15) }), in: 0...1425)
+                    .accessibilityLabel("Time of day, your time")
+                    .accessibilityValue(store.clock(home, t))
+                // Green where everyone is free: drag the slider into the green.
+                GeometryReader { g in
+                    let inset: CGFloat = 10, w = g.size.width - 2 * inset
+                    ForEach(Array((store.shared?.runs ?? []).enumerated()), id: \.offset) { _, r in
+                        Capsule().fill(Color(red: 0.086, green: 0.639, blue: 0.290).opacity(store.shared?.work == true ? 0.9 : 0.55))
+                            .frame(width: max(3, w * CGFloat(r.1 - r.0) * 60 / 1425), height: 4)
+                            .offset(x: inset + w * CGFloat(r.0 * 60) / 1425)
+                    }
+                }
+                .frame(height: 4)
+                .accessibilityHidden(true)
                 Text(store.planning
-                     ? "Planning \(store.formatter(home, "EEE, MMM d").string(from: t)) at \(store.clock(home, t)) your time"
-                     : "Pick a day, type a time or drag to plan")
-                    .font(.caption).foregroundStyle(.secondary)
+                     ? "Planning \(store.formatter(home, "EEE, MMM d").string(from: t)) at \(store.clock(home, t)) your time" + (store.planDistance.map { " · " + $0 } ?? "")
+                     : "Pick a day, type a time or drag to plan. ← → move 15 minutes, Esc returns to now.")
+                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
 
             if store.editing { editor }
@@ -85,12 +102,13 @@ struct Panel: View {
                     Divider()
                     Button("Weather data: Open-Meteo.com") { if let u = URL(string: "https://open-meteo.com/") { NSWorkspace.shared.open(u) } }
                     Button("Quit Time Zones") { NSApp.terminate(nil) }.keyboardShortcut("q")
-                } label: { Image(systemName: "ellipsis.circle") }
+                } label: { Image(systemName: "ellipsis.circle").accessibilityLabel("More") }
                     .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
             }
-            Text(store.note ?? "Drag a city to reorder. Click it to show or hide it in the menu bar. ⌃⌥T opens this from anywhere.")
-                .font(.caption2).foregroundStyle(store.note == nil ? .secondary : .primary)
-                .fixedSize(horizontal: false, vertical: true)
+            if let n = store.note ?? (store.askLogin ? "Drag a city to reorder. Click it to show or hide it in the menu bar. ⌃⌥T opens this from anywhere." : nil) {
+                Text(n).font(.caption2).foregroundStyle(store.note == nil ? .secondary : .primary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
         .padding(14)
         .frame(width: 430)
@@ -123,7 +141,7 @@ struct Panel: View {
                 TextField("Add a city, country or time zone", text: $store.query)
                     .textFieldStyle(.plain)
                     .onSubmit { if let p = Catalog.shared.search(store.query).first { store.add(p) } }
-                    .onExitCommand { store.query = "" }
+                    .onExitCommand { if store.query.isEmpty { HotKey.togglePanel() } else { store.query = "" } }
                 if !store.query.isEmpty {
                     Button { store.query = "" } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary) }
                         .buttonStyle(.plain).help("Clear")
@@ -145,7 +163,7 @@ struct Panel: View {
                             Text(p.cc.isEmpty ? p.zone : Catalog.shared.countryName(p.cc)).font(.caption).foregroundStyle(.secondary)
                         }
                         Spacer()
-                        Text(store.gap(p, at: Date())).font(.caption).foregroundStyle(.secondary)
+                        Text(store.time(p, at: store.instant) + " · " + store.gap(p, at: store.instant)).font(.caption).foregroundStyle(.secondary)
                         Image(systemName: have ? "checkmark" : "plus.circle").foregroundStyle(have ? Color.secondary : Color.accentColor)
                     }
                     .padding(.vertical, 2)
@@ -202,7 +220,9 @@ struct Row: View {
             VStack(alignment: .leading, spacing: 1) {
                 HStack(spacing: 4) {
                     Text(place.shown).font(.system(size: 14, weight: .semibold)).lineLimit(1)
-                    if place.pinned { Image(systemName: "pin.fill").font(.system(size: 9)).foregroundStyle(.secondary) }
+                    if place.pinned || store.hoverID == place.id {
+                        Image(systemName: place.pinned ? "pin.fill" : "pin").font(.system(size: 9)).foregroundStyle(.secondary).opacity(place.pinned ? 1 : 0.5)
+                    }
                 }
                 Text(sub).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
             }
@@ -231,6 +251,7 @@ struct Row: View {
             .padding(.horizontal, 9).padding(.vertical, 4)
             .frame(minWidth: store.h24 ? 94 : 122, alignment: .trailing)
             .background(alt.map(Sky.color) ?? Color.primary.opacity(0.08), in: RoundedRectangle(cornerRadius: 7))
+            .help(store.dayText(place, at: at) ?? "")
         }
         .frame(height: Store.rowHeight)
         .padding(.horizontal, 4)
@@ -238,6 +259,8 @@ struct Row: View {
             if dragging {
                 RoundedRectangle(cornerRadius: 8).fill(Color(nsColor: .windowBackgroundColor))
                     .shadow(color: .black.opacity(0.25), radius: 6, y: 2)
+            } else if store.hoverID == place.id {
+                RoundedRectangle(cornerRadius: 6).fill(Color.primary.opacity(0.05))
             }
         }
         .offset(y: dragging ? store.dragOffset : 0)
@@ -249,15 +272,23 @@ struct Row: View {
             .onEnded { _ in store.endDrag() })
         .onTapGesture { store.togglePin(place) }
         .onHover { inside in
-            if inside { NSCursor.openHand.push(); store.hoverID = place.id }
-            else { NSCursor.pop(); if store.hoverID == place.id { store.hoverID = nil } }
+            if inside { store.hoverID = place.id } else if store.hoverID == place.id { store.hoverID = nil }
         }
         .help("Drag to reorder. Click to \(place.pinned ? "hide it from" : "show it in") the menu bar.")
         .contextMenu {
             Button(place.pinned ? "Hide from menu bar" : "Show in menu bar") { store.togglePin(place) }
+            Button("Move up") { store.move(place, by: -1) }.disabled(store.places.first?.id == place.id)
+            Button("Move down") { store.move(place, by: 1) }.disabled(store.places.last?.id == place.id)
+            Divider()
             Button("Remove \(place.shown)", role: .destructive) { store.remove(place) }.disabled(store.places.count == 1)
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(place.shown), \(clock)\(sky.map { ", " + $0.words } ?? "")\(weather.map { ", \($0.temp) degrees, \($0.words)" } ?? ""), \(sub)\(place.pinned ? ", in the menu bar" : "")")
+        .accessibilityAddTraits(.isButton)
+        .accessibilityHint(place.pinned ? "Hides it from the menu bar" : "Shows it in the menu bar")
+        .accessibilityAction { store.togglePin(place) }
+        .accessibilityAction(named: "Move up") { store.move(place, by: -1) }
+        .accessibilityAction(named: "Move down") { store.move(place, by: 1) }
+        .accessibilityAction(named: "Remove") { store.remove(place) }
     }
 }

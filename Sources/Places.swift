@@ -80,6 +80,17 @@ final class Catalog {
             guard out.count < limit, seen.insert(p.name + "|" + p.zone).inserted else { return }
             out.append(p)
         }
+        // "UTC+5:30", "GMT-3", "+9": a fixed offset (no daylight saving, no sky colour).
+        if let m = k.wholeMatch(of: #/(?:utc|gmt)?\s*([+\-\u2212])\s*(\d{1,2})(?:[:.]?(\d{2}))?/#), let h = Int(m.2), h <= 14 {
+            let mins = h * 60 + (m.3.flatMap { Int($0) } ?? 0), sign = m.1 == "+" ? 1 : -1
+            let whole = mins % 60 == 0 && h <= 12
+            // Etc/GMT names are sign-inverted (Etc/GMT-9 is UTC+9) but are real IANA zones the website accepts.
+            let zone = whole ? (mins == 0 ? "Etc/UTC" : "Etc/GMT\(sign > 0 ? "-" : "+")\(h)") : TimeZone(secondsFromGMT: sign * mins * 60)?.identifier
+            if let zone, TimeZone(identifier: zone) != nil {
+                let label = "UTC" + (mins == 0 ? "" : (sign > 0 ? "+" : "\u{2212}") + "\(h)" + (mins % 60 == 0 ? "" : String(format: ":%02d", mins % 60)))
+                add(Place(name: label, zone: zone, lat: nil, lon: nil, cc: ""))
+            }
+        }
         // Zone words people type: "PST", "Eastern", "IST". Each resolves to that zone's biggest city.
         if let z = Catalog.zoneWords[k] {
             add(city(inZone: z) ?? Place(name: z == "Etc/UTC" ? "UTC" : Place.zoneCity(z), zone: z, lat: nil, lon: nil, cc: ""))

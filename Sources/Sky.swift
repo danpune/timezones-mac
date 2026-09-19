@@ -49,6 +49,20 @@ enum Sky {
         return nil
     }
 
+    /// Sunrise and sunset on the local day starting at `midnight` (the sunset may fall just after the
+    /// next midnight near the Arctic Circle). Nil parts when the sun doesn't rise or set that day.
+    static func day(from midnight: Date, lat: Double, lon: Double) -> (rise: Date?, set: Date?) {
+        var events: [(rise: Bool, at: Date)] = [], t = midnight
+        while let e = nextEvent(t, lat: lat, lon: lon), e.at < midnight.addingTimeInterval(30 * 3600) {
+            events.append(e); t = e.at.addingTimeInterval(60)
+        }
+        let end = midnight.addingTimeInterval(86_400)
+        let rise = events.first { $0.rise && $0.at < end }?.at
+        // the sunset after that sunrise, even past midnight; with no sunrise, the day's own sunset
+        let set = rise.flatMap { r in events.first { !$0.rise && $0.at > r }?.at } ?? events.first { !$0.rise && $0.at < end }?.at
+        return (rise, set)
+    }
+
     // Night, twilights, golden hour, day.
     private static let stops: [(Double, UInt32)] = [
         (-90, 0x232c47), (-18, 0x293455), (-12, 0x34416c), (-6, 0x4e4b7f), (-3, 0x86617d),

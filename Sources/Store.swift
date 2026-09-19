@@ -20,7 +20,15 @@ final class Store: ObservableObject {
     // Panel state lives here: with only the Command Line Tools, SwiftUI's @State macro has no plugin.
     @Published var editing = false
     @Published var query = ""
-    @Published var note: String?
+    @Published var note: String? {
+        didSet {
+            guard let n = note else { return }
+            NSAccessibility.post(element: NSApp as Any, notification: .announcementRequested,
+                                 userInfo: [.announcement: n, .priority: NSAccessibilityPriorityLevel.high.rawValue])
+            Task { @MainActor [weak self] in try? await Task.sleep(nanoseconds: 4_000_000_000); if self?.note == n { self?.note = nil } }
+        }
+    }
+    private var closedAt: Date?
     @Published var hoverID: UUID?
     // Mouse reordering in the table: the dragged row follows the pointer and the list reorders
     // each time it crosses half a row, so the order is right the moment the mouse is released.
@@ -47,11 +55,23 @@ final class Store: ObservableObject {
         schedule()
         if launchAtLogin { askLogin = false }
         HotKey.action = { HotKey.togglePanel() }
+        installKeys()
         applyHotKey()
         let nc = NotificationCenter.default, ws = NSWorkspace.shared.notificationCenter
         for name in [NSNotification.Name.NSSystemClockDidChange, .NSSystemTimeZoneDidChange] {
             nc.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
                 Task { @MainActor in NSTimeZone.resetSystemTimeZone(); self?.formatters = [:]; self?.schedule() }
+            }
+        }
+        // A plan is for now-ish: reopening the panel more than 5 minutes after closing it goes back to live,
+        // so a glance never shows an old plan as if it were the current time.
+        nc.addObserver(forName: NSWindow.didResignKeyNotification, object: nil, queue: .main) { [weak self] _ in
+            Task { @MainActor in self?.closedAt = Date() }
+        }
+        nc.addObserver(forName: NSWindow.didBecomeKeyNotification, object: nil, queue: .main) { [weak self] _ in
+            Task { @MainActor in
+                guard let self, let c = self.closedAt, Date().timeIntervalSince(c) > 300 else { return }
+                self.planned = nil; self.timeText = ""; self.query = ""
             }
         }
         // A sleeping Mac freezes timers; catch up the moment it wakes.
@@ -139,7 +159,10 @@ final class Store: ObservableObject {
     /// Returns false when the text isn't a time, so the field can say so.
     func applyTyped() -> Bool {
         guard let m = Store.parseTime(timeText) else { return timeText.isEmpty }
-        setMinuteOfDay(m); timeText = ""; return true
+        let wasLive = !planning
+        setMinuteOfDay(m); timeText = ""
+        if wasLive, let p = planned, p < now { planned = Calendar.current.date(byAdding: .day, value: 1, to: p) }
+        return true
     }
 
     // MARK: formatting
@@ -167,9 +190,56 @@ final class Store: ObservableObject {
     }
 
     /// Weekday only when it is a different day from yours.
+    /// "tomorrow" / "yesterday" when the city's date differs from yours (offsets never reach two days).
     func weekday(_ p: Place, at t: Date) -> String? {
         let mine = formatter(TimeZone.current.identifier, "yyyyMMdd").string(from: t)
-        return formatter(p.zone, "yyyyMMdd").string(from: t) == mine ? nil : formatter(p.zone, "EEE").string(from: t)
+        let theirs = formatter(p.zone, "yyyyMMdd").string(from: t)
+        return theirs == mine ? nil : theirs > mine ? "tomorrow" : "yesterday"
+    }
+
+    /// "in 5h 15m", "2h ago", "in 1d 4h" for the planning readout.
+    var planDistance: String? {
+        guard planning else { return nil }
+        let m = Int((instant.timeIntervalSince(now) / 60).rounded())
+        guard abs(m) >= 1 else { return nil }
+        let a = abs(m), d = a / 1440, h = a % 1440 / 60, mi = a % 60
+        let s = d > 0 ? "\(d)d" + (h > 0 ? " \(h)h" : "") : h > 0 ? "\(h)h" + (mi > 0 ? " \(mi)m" : "") : "\(mi)m"
+        return m > 0 ? "in " + s : s + " ago"
+    }
+
+    /// Shift the planned time by whole minutes (arrow keys), starting from now when live.
+    func nudge(_ minutes: Int) {
+        let base = planned ?? Date(timeIntervalSince1970: (now.timeIntervalSince1970 / 900).rounded(.down) * 900)
+        planned = base.addingTimeInterval(Double(minutes) * 60)
+    }
+
+    /// Tooltip on the time: "Sunrise 6:12 AM · Sunset 6:37 PM · 12h 25m of daylight" for that city's day.
+    func dayText(_ p: Place, at t: Date) -> String? {
+        guard let la = p.lat, let lo = p.lon else { return nil }
+        var c = Calendar(identifier: .gregorian); c.timeZone = p.tz
+        let d = Sky.day(from: c.startOfDay(for: t), lat: la, lon: lo)
+        let f = { (x: Date) in self.clock(p.zone, x) }
+        switch (d.rise, d.set) {
+        case let (r?, s?) where s > r:
+            let m = Int(s.timeIntervalSince(r) / 60)
+            return "Sunrise \(f(r)) · Sunset \(f(s)) · \(m / 60)h \(m % 60)m of daylight"
+        case let (r?, _): return "Sunrise \(f(r)) · no sunset that day"
+        case let (_, s?): return "Sunset \(f(s)) · no sunrise that day"
+        default: return Sky.sunAlt(t, lat: la, lon: lo) >= Sky.h0 ? "Sun up all day" : "Sun down all day"
+        }
+    }
+
+    /// ← → move the planned time 15 minutes, Esc returns to now: only when no text field is being typed in.
+    func installKeys() {
+        NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] e in
+            guard let self, !(NSApp.keyWindow?.firstResponder is NSText) else { return e }
+            switch e.keyCode {
+            case 123: self.nudge(-15); return nil   // ←
+            case 124: self.nudge(15); return nil    // →
+            case 53: if self.planning { self.planned = nil; self.timeText = "" } else { HotKey.togglePanel() }; return nil   // Esc
+            default: return e
+            }
+        }
     }
 
     /// "sunset 7:20" / "sunrise 6:26" in the city's own time; AM/PM is left off because the word says which.
@@ -182,7 +252,13 @@ final class Store: ObservableObject {
     }
 
     var menuTitle: String {
-        places.filter(\.pinned).map { ($0.flag.isEmpty ? "" : $0.flag + " ") + "\($0.short) \(time($0, at: now))" }.joined(separator: "   ")
+        let pins = places.filter(\.pinned)
+        let flags = pins.map(\.flag)
+        return pins.map { p in
+            let unique = !p.flag.isEmpty && flags.filter { $0 == p.flag }.count == 1
+            let tag = pins.count == 1 ? (p.flag.isEmpty ? p.short : p.flag + " " + p.short) : unique ? p.flag : p.short
+            return tag + " " + time(p, at: now)
+        }.joined(separator: "  ")
     }
 
     // MARK: clock changes, as on the website: a zone's offset changes within a week before or two weeks after
@@ -231,13 +307,11 @@ final class Store: ObservableObject {
 
     // MARK: sharing
 
-    /// "Sat, Sep 19" then "Austin: 9:00 AM", one city per line, "(+1d)" when the date differs.
+    /// "Sat, Sep 19" then "Austin: 9:00 AM", one city per line, the weekday when it differs ("Mumbai: 7:30 AM Sun").
     var timesText: String {
         let t = instant, home = TimeZone.current.identifier
-        let homeDay = formatter(home, "yyyy-MM-dd").string(from: t)
         let lines = places.map { p -> String in
-            let day = formatter(p.zone, "yyyy-MM-dd").string(from: t)
-            let dd = day == homeDay ? "" : (day > homeDay ? " (+1d)" : " (-1d)")
+            let dd = weekday(p, at: t) == nil ? "" : " " + formatter(p.zone, "EEE").string(from: t)
             return "\(p.shown): \(time(p, at: t))" + dd
         }
         return ([formatter(home, "EEE, MMM d").string(from: t)] + lines).joined(separator: "\n")
@@ -309,26 +383,36 @@ final class Store: ObservableObject {
 
     // MARK: overlap, as on the website: every city at work 9–6, else every city awake 7 AM–10 PM
 
-    var overlap: String? {
+    /// Hours of your day (the day being shown) when everyone is at work, else when everyone is awake.
+    /// Work hours skip a city's weekend, using its country's own weekend (Fri–Sat where that applies).
+    var shared: (work: Bool, runs: [(Int, Int)], hours: [Date?])? {
         guard places.count > 1 else { return nil }
         let cal = Calendar.current
         let day = cal.startOfDay(for: instant)
         let hours: [Date?] = (0..<24).map { cal.date(bySettingHour: $0, minute: 0, second: 0, of: day) }
-        func inHours(_ t: Date, _ z: TimeZone, _ lo: Int, _ hi: Int) -> Bool {
-            var c = Calendar(identifier: .gregorian); c.timeZone = z
+        func inHours(_ t: Date, _ p: Place, _ lo: Int, _ hi: Int, work: Bool) -> Bool {
+            var c = Calendar(identifier: .gregorian); c.timeZone = p.tz
+            if !p.cc.isEmpty { c.locale = Locale(identifier: "en_" + p.cc) }
+            if work && c.isDateInWeekend(t) { return false }
             let h = c.component(.hour, from: t); return h >= lo && h < hi
         }
-        func cols(_ lo: Int, _ hi: Int) -> [Int] {
+        func cols(_ lo: Int, _ hi: Int, work: Bool) -> [Int] {
             (0..<24).filter { j in
                 guard let t = hours[j] else { return false }
-                return places.allSatisfy { inHours(t, $0.tz, lo, hi) && inHours(t.addingTimeInterval(3540), $0.tz, lo, hi) }
+                return places.allSatisfy { inHours(t, $0, lo, hi, work: work) && inHours(t.addingTimeInterval(3540), $0, lo, hi, work: work) }
             }
         }
-        let work = cols(9, 18)
-        let use = work.isEmpty ? cols(7, 22) : work
-        guard !use.isEmpty else { return "No shared time: there is no hour when every city is between \(h24 ? "07:00 and 22:00" : "7 AM and 10 PM")" }
+        let work = cols(9, 18, work: true)
+        let use = work.isEmpty ? cols(7, 22, work: false) : work
         var runs: [(Int, Int)] = []
         for j in use { if let r = runs.last, r.1 == j { runs[runs.count - 1].1 = j + 1 } else { runs.append((j, j + 1)) } }
+        return (!work.isEmpty, runs, hours)
+    }
+
+    var overlap: String? {
+        guard let s = shared else { return nil }
+        let runs = s.runs, hours = s.hours, day = Calendar.current.startOfDay(for: instant)
+        guard !runs.isEmpty else { return "No shared time: there is no hour when every city is between \(h24 ? "07:00 and 22:00" : "7 AM and 10 PM")" }
         let zone = TimeZone.current.identifier
         let end = { (k: Int) -> Date in k < 24 ? (hours[k] ?? day) : (hours[23] ?? day).addingTimeInterval(3600) }
         let range = { (a: Date, b: Date) -> String in
@@ -337,7 +421,8 @@ final class Store: ObservableObject {
             return fa + "–" + fb
         }
         let span = runs.compactMap { r in hours[r.0].map { range($0, end(r.1)) } }.joined(separator: ", ")
-        return "Everyone is \(work.isEmpty ? "awake" : "at work"): \(span) your time (\(use.count)h)"
+        let total = runs.reduce(0) { $0 + $1.1 - $1.0 }
+        return "Everyone is \(s.work ? "at work" : "awake"): \(span) your time (\(total)h)"
     }
 
     // MARK: actions
@@ -353,7 +438,18 @@ final class Store: ObservableObject {
         if let i = places.firstIndex(where: { $0.id == p.id }) { places[i].pinned.toggle() }
     }
 
-    func remove(_ p: Place) { places.removeAll { $0.id == p.id } }
+    func remove(_ p: Place) { guard places.count > 1 else { return }; places.removeAll { $0.id == p.id } }
+
+    func move(_ p: Place, by d: Int) {
+        guard let i = places.firstIndex(where: { $0.id == p.id }), places.indices.contains(i + d) else { return }
+        places.swapAt(i, i + d)
+    }
+
+    /// Click the shared-time note to plan its first hour; while live, a time already gone means tomorrow.
+    func planShared() {
+        guard let s = shared, let first = s.runs.first, let t = s.hours[first.0] else { return }
+        planned = !planning && t < now ? Calendar.current.date(byAdding: .day, value: 1, to: t) : t
+    }
 
     func drag(_ id: UUID, by dy: CGFloat) {
         guard let cur = places.firstIndex(where: { $0.id == id }) else { return }
