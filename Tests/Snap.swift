@@ -57,5 +57,13 @@ struct Snap {
         store.drag(store.places[0].id, by: 400)    // first row past the end clamps to last
         store.endDrag()
         print("before:", before, "\nafter:", store.places.map(\.name))
+        // Many cities, long names, 24h and Celsius, question answered
+        store.askLogin = false
+        for q in ["Santiago de Queretaro", "Tokyo", "Sydney", "Reykjavik"] { if let p = Catalog.shared.search(q).first { store.add(p) } }
+        store.loadWeather()
+        for _ in 0..<40 { RunLoop.main.run(until: Date().addingTimeInterval(0.25)); if store.places.allSatisfy({ store.wx($0, at: Date()) != nil }) { break } }
+        store.note = nil
+        shot("7-nine-cities")
+        store.h24 = true; store.fahrenheit = false; shot("8-24h-celsius-dark", dark: true)
     }
 }

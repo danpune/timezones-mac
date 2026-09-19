@@ -283,7 +283,8 @@ final class Store: ObservableObject {
             }
             Task { @MainActor in
                 self.wxBusy = false
-                if got.isEmpty { self.wxFailed = Date() } else { self.weather.merge(got) { $1 } }
+                // cities added while this request was out are fetched straight away, not at the next minute
+                if got.isEmpty { self.wxFailed = Date() } else { self.weather.merge(got) { $1 }; self.loadWeather() }
             }
         }.resume()
     }
