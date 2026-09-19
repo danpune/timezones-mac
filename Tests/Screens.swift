@@ -1,5 +1,5 @@
 // Renders the README screenshots into docs/ from the app's own views (off-screen, @2x).
-//   swiftc -swift-version 5 -parse-as-library Sources/{Sky,Places,Store,Views,HotKey,States,StatusController}.swift \
+//   swiftc -swift-version 5 -parse-as-library Sources/{Sky,Places,Store,Views,HotKey,States,StatusController,Updater}.swift \
 //     Tests/Screens.swift -o build/screens  (copy Resources/cities.txt and Resources/flags next to it), then run
 //   build/screens docs
 import AppKit

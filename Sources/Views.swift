@@ -2,6 +2,7 @@ import SwiftUI
 
 struct Panel: View {
     @EnvironmentObject var store: Store
+    @ObservedObject private var updater = Updater.shared
 
     var body: some View {
         let t = store.instant
@@ -70,6 +71,19 @@ struct Panel: View {
                 }
             }
             if let c = store.clockNote { note(c, Color(red: 0.851, green: 0.467, blue: 0.024)) }
+            if let r = updater.release {
+                HStack(alignment: .top) {
+                    note(updater.failed ? "Update failed: couldn't install version \(r.version). Download it from GitHub instead."
+                         : updater.busy ? "Updating: getting version \(r.version)…" : "Update: version \(r.version) is ready.", .blue)
+                    Spacer()
+                    if updater.failed {
+                        Button("Download") { updater.openPage() }.controlSize(.small)
+                    } else {
+                        Button("Update") { updater.install() }.controlSize(.small).disabled(updater.busy)
+                            .help("Download version \(r.version), check it and restart Time Zones")
+                    }
+                }
+            }
 
             // Plan a moment: pick a day, type a time ("3pm", "15:30") or drag the slider through the day.
             VStack(alignment: .leading, spacing: 4) {

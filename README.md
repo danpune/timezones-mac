@@ -19,6 +19,10 @@ A free companion to the [Time Zones](https://danpune.github.io/timezones/) websi
    ([Apple's guide](https://support.apple.com/guide/mac-help/open-a-mac-app-from-an-unknown-developer-mh40616/mac)).
 3. Look at the top right of your screen: the app lives in the menu bar, next to the clock (there is no Dock icon).
 
+**Updates:** from version 1.2 on, the panel tells you when a new version is out. Click **Update** and the app
+downloads it, checks it was signed by this project, replaces itself and restarts, with no "Open Anyway" step.
+On 1.0 or 1.1, download the zip above once to get this.
+
 ## What you see
 
 In the menu bar, up to three pinned cities with their flag and a short time, for example **🇺🇸 2:40a  🇮🇳 12:10p  🇬🇧 7:40a**.
@@ -42,8 +46,8 @@ Click it (or press **⌃⌥T** from any app) to open the panel. Each city shows:
 | <img src="docs/panel-dark.png" width="400" alt="The same panel in dark mode"> | **Make it yours.** 12h or 24h, °F or °C. **Nicknames and pins** lets you call a city "Mom" or "Office". The **⋯** menu has Open at login, the ⌃⌥T shortcut, Copy a link to the website, and Quit. |
 
 A heads-up appears when a city changes its clocks for daylight saving in the next two weeks, so a call
-isn't booked an hour off. Only the weather needs the internet (from [Open-Meteo](https://open-meteo.com/));
-everything else is worked out on your Mac. City data: [GeoNames](https://www.geonames.org/), CC BY 4.0.
+isn't booked an hour off. Only the weather (from [Open-Meteo](https://open-meteo.com/)) and a check for a new
+version on GitHub (at start, then at most every 12 hours) use the internet; everything else is worked out on your Mac. City data: [GeoNames](https://www.geonames.org/), CC BY 4.0.
 
 ## Build it yourself
 
@@ -52,6 +56,7 @@ Needs only the Xcode Command Line Tools:
 ```
 ./build.sh            # builds build/Time Zones.app (universal, ad-hoc signed)
 ./build.sh install    # also copies it to /Applications and opens it
+./build.sh release    # zips and signs it for GitHub Releases (needs the key from Tools/sign.swift)
 ```
 
 SwiftUI panel in an `NSStatusItem` + `NSPopover` (not `MenuBarExtra`, which can't be opened from code on

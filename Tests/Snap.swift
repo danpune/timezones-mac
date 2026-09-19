@@ -1,5 +1,5 @@
 // Renders the panel off-screen to PNGs, so the UI can be checked without screen-recording access.
-//   swiftc -swift-version 5 -parse-as-library Sources/{Sky,Places,Store,Views,HotKey,States,StatusController}.swift \
+//   swiftc -swift-version 5 -parse-as-library Sources/{Sky,Places,Store,Views,HotKey,States,StatusController,Updater}.swift \
 //     Tests/Snap.swift -o build/snap  (then copy Resources/cities.txt and Resources/flags next to it)
 import AppKit
 import SwiftUI
@@ -36,6 +36,11 @@ struct Snap {
         }
         shot("1-live")
         shot("2-live-dark", dark: true)
+        // This harness has no version number, so the latest GitHub release always counts as newer.
+        Updater.shared.checkIfDue()
+        for _ in 0..<40 where Updater.shared.release == nil { RunLoop.main.run(until: Date().addingTimeInterval(0.25)) }
+        print("update:", Updater.shared.release?.version ?? "none")
+        shot("2b-update")
         store.h24 = true; shot("3-24h"); store.h24 = false
         store.setMinuteOfDay(9 * 60, on: Calendar.current.date(from: DateComponents(year: 2026, month: 10, day: 27))); shot("4-planning")
         print("clock note:", store.clockNote ?? "-")

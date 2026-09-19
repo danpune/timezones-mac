@@ -25,6 +25,7 @@ final class StatusController: NSObject, NSApplicationDelegate, NSPopoverDelegate
         store.panelShown = { [weak self] in self?.popover.isShown ?? false }
         changes = store.objectWillChange.sink { [weak self] _ in DispatchQueue.main.async { self?.refresh() } }
         refresh()
+        Updater.shared.checkIfDue()
     }
 
     /// Pinned cities next to the macOS clock ("🇮🇳 MUM 9:42a"); a globe when none is pinned.
@@ -61,6 +62,6 @@ final class StatusController: NSObject, NSApplicationDelegate, NSPopoverDelegate
         return false
     }
 
-    func popoverWillShow(_ notification: Notification) { store.panelOpening() }
+    func popoverWillShow(_ notification: Notification) { store.panelOpening(); Updater.shared.checkIfDue() }
     func popoverDidClose(_ notification: Notification) { store.panelClosed() }
 }
