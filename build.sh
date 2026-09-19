@@ -21,6 +21,7 @@ done
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 lipo -create "build/$EXE-arm64" "build/$EXE-x86_64" -output "$APP/Contents/MacOS/$EXE"
 cp Resources/cities.txt Resources/AppIcon.icns "$APP/Contents/Resources/"
+cp -R Resources/flags "$APP/Contents/Resources/"
 
 cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>

@@ -9,10 +9,14 @@ struct Place: Codable, Identifiable, Hashable {
     var cc: String
     var label: String?
     var pinned = false
+    /// State or province code, as in the website's data: "TX", "08" (Ontario). Nil outside US/CA/AU.
+    var st: String?
 
     var shown: String { label.map { $0.trimmingCharacters(in: .whitespaces) }.flatMap { $0.isEmpty ? nil : $0 } ?? name }
     var tz: TimeZone { TimeZone(identifier: zone) ?? .current }
     var flag: String { Place.flag(cc) }
+    var stateKey: String? { States.key(cc, st) }
+    var stateName: String? { stateKey.flatMap { States.table[$0]?.name } }
 
     // Menu bar code: a rename as typed, else "SF" / "NY" for two words, "MUM" / "LON" for one.
     var short: String {
@@ -48,7 +52,7 @@ final class Catalog {
         for line in lines.dropFirst() {
             let f = line.split(separator: "|", omittingEmptySubsequences: false).map(String.init)
             guard f.count >= 6, let la = Double(f[1]), let lo = Double(f[2]), let zi = Int(f[3]), zi < zones.count else { continue }
-            let p = Place(name: f[0], zone: zones[zi], lat: la, lon: lo, cc: f[4])
+            let p = Place(name: f[0], zone: zones[zi], lat: la, lon: lo, cc: f[4], st: f.count > 6 && !f[6].isEmpty ? f[6] : nil)
             rows.append(Row(place: p, key: Catalog.norm(f[0]), capital: f[5] == "1"))
         }
         let en = Locale(identifier: "en_US")
@@ -118,6 +122,9 @@ final class Catalog {
                         "Etc/UTC": ["utc", "zulu"]] { for w in ws { m[w] = z } }
         return m
     }()
+
+    /// The same city in the catalogue (name and zone), used to recover a state for older saved lists.
+    func match(_ p: Place) -> Place? { rows.first(where: { $0.place.name == p.name && $0.place.zone == p.zone })?.place }
 
     /// The biggest city in a zone, for the viewer's own place.
     func city(inZone z: String) -> Place? { rows.first(where: { $0.place.zone == z })?.place }

@@ -44,8 +44,12 @@ struct Panel: View {
 
             if let o = store.overlap {
                 let good = !(store.shared?.runs.isEmpty ?? true)
-                Button { store.planShared() } label: { note(o, good ? Color(red: 0.086, green: 0.639, blue: 0.290) : .orange) }
-                    .buttonStyle(.plain).disabled(!good).help(good ? "Plan this time" : "")
+                if good {
+                    Button { store.planShared() } label: { note(o, Color(red: 0.086, green: 0.639, blue: 0.290)) }
+                        .buttonStyle(.plain).help("Plan this time")
+                } else {
+                    note(o, .orange)   // not a button: dimming a disabled button would grey out the message
+                }
             }
             if let c = store.clockNote { note(c, Color(red: 0.851, green: 0.467, blue: 0.024)) }
 
@@ -159,8 +163,9 @@ struct Panel: View {
                     HStack(spacing: 8) {
                         Text(p.flag.isEmpty ? "🌐" : p.flag)
                         VStack(alignment: .leading, spacing: 0) {
-                            Text(p.name)
-                            Text(p.cc.isEmpty ? p.zone : Catalog.shared.countryName(p.cc)).font(.caption).foregroundStyle(.secondary)
+                            HStack(spacing: 4) { Text(p.name); StateFlag(place: p, height: 10) }
+                            Text(p.cc.isEmpty ? p.zone : [p.stateName, Catalog.shared.countryName(p.cc)].compactMap { $0 }.joined(separator: " · "))
+                                .font(.caption).foregroundStyle(.secondary)
                         }
                         Spacer()
                         Text(store.time(p, at: store.instant) + " · " + store.gap(p, at: store.instant)).font(.caption).foregroundStyle(.secondary)
@@ -220,6 +225,7 @@ struct Row: View {
             VStack(alignment: .leading, spacing: 1) {
                 HStack(spacing: 4) {
                     Text(place.shown).font(.system(size: 14, weight: .semibold)).lineLimit(1)
+                    StateFlag(place: place, height: 11)
                     if place.pinned || store.hoverID == place.id {
                         Image(systemName: place.pinned ? "pin.fill" : "pin").font(.system(size: 9)).foregroundStyle(.secondary).opacity(place.pinned ? 1 : 0.5)
                     }
@@ -288,12 +294,28 @@ struct Row: View {
             Button("Remove \(place.shown)", role: .destructive) { store.remove(place) }.disabled(store.places.count == 1)
         }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(place.shown), \(clock)\(sky.map { ", " + $0.words } ?? "")\(weather.map { ", \($0.temp) degrees, \($0.words)" } ?? ""), \(sub)\(place.pinned ? ", in the menu bar" : "")")
+        .accessibilityLabel("\(place.shown)\(place.stateName.map { ", " + $0 } ?? ""), \(clock)\(sky.map { ", " + $0.words } ?? "")\(weather.map { ", \($0.temp) degrees, \($0.words)" } ?? ""), \(sub)\(place.pinned ? ", in the menu bar" : "")")
         .accessibilityAddTraits(.isButton)
         .accessibilityHint(place.pinned ? "Hides it from the menu bar" : "Shows it in the menu bar")
         .accessibilityAction { store.togglePin(place) }
         .accessibilityAction(named: "Move up") { store.move(place, by: -1) }
         .accessibilityAction(named: "Move down") { store.move(place, by: 1) }
         .accessibilityAction(named: "Remove") { store.remove(place) }
+    }
+}
+
+/// The state or province flag after a city name, as on the website. Nothing for other countries.
+struct StateFlag: View {
+    let place: Place
+    let height: CGFloat
+
+    var body: some View {
+        if let key = place.stateKey, let img = States.flag(key) {
+            Image(nsImage: img).resizable().aspectRatio(contentMode: .fit).frame(height: height)
+                .clipShape(RoundedRectangle(cornerRadius: 2))
+                .overlay(RoundedRectangle(cornerRadius: 2).strokeBorder(Color.primary.opacity(0.18), lineWidth: 0.5))
+                .help(place.stateName ?? "")
+                .accessibilityHidden(true)
+        }
     }
 }

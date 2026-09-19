@@ -46,7 +46,13 @@ final class Store: ObservableObject {
         h24 = d.object(forKey: "h24") as? Bool
             ?? !(DateFormatter.dateFormat(fromTemplate: "j", options: 0, locale: .current) ?? "h").contains("a")
         if let data = d.data(forKey: "places"), let saved = try? JSONDecoder().decode([Place].self, from: data), !saved.isEmpty {
-            places = saved
+            // Lists saved before state flags existed: recover each city's state from the defaults or the catalogue.
+            places = saved.map { p in
+                guard p.st == nil, ["US", "CA", "AU"].contains(p.cc) else { return p }
+                var q = p
+                q.st = Store.defaults().first(where: { $0.name == p.name && $0.zone == p.zone })?.st ?? Catalog.shared.match(p)?.st
+                return q
+            }
         } else {
             places = Store.defaults()
         }
@@ -84,9 +90,9 @@ final class Store: ObservableObject {
     // and the city furthest from it goes in the menu bar.
     static func defaults() -> [Place] {
         var ps = [
-            Place(name: "Austin", zone: "America/Chicago", lat: 30.27, lon: -97.74, cc: "US"),
-            Place(name: "San Francisco", zone: "America/Los_Angeles", lat: 37.77, lon: -122.42, cc: "US"),
-            Place(name: "New York", zone: "America/New_York", lat: 40.71, lon: -74.01, cc: "US"),
+            Place(name: "Austin", zone: "America/Chicago", lat: 30.27, lon: -97.74, cc: "US", st: "TX"),
+            Place(name: "San Francisco", zone: "America/Los_Angeles", lat: 37.77, lon: -122.42, cc: "US", st: "CA"),
+            Place(name: "New York", zone: "America/New_York", lat: 40.71, lon: -74.01, cc: "US", st: "NY"),
             Place(name: "Mumbai", zone: "Asia/Kolkata", lat: 19.08, lon: 72.88, cc: "IN"),
             Place(name: "London", zone: "Europe/London", lat: 51.51, lon: -0.13, cc: "GB"),
         ]
