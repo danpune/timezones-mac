@@ -36,5 +36,14 @@ struct Snap {
         store.offsetMin = 12 * 60; shot("4-planning")
         store.offsetMin = 0
         store.editing = true; store.query = "nel"; shot("5-editing")
+        store.editing = false; store.query = ""
+        let before = store.places.map(\.name)
+        store.drag(store.places[4].id, by: -100)   // London up two rows, still held
+        shot("6-dragging")
+        print("while dragging:", store.places.map(\.name), "offset", store.dragOffset)
+        store.endDrag()
+        store.drag(store.places[0].id, by: 400)    // first row past the end clamps to last
+        store.endDrag()
+        print("before:", before, "\nafter:", store.places.map(\.name))
     }
 }

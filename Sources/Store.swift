@@ -13,6 +13,13 @@ final class Store: ObservableObject {
     @Published var editing = false
     @Published var query = ""
     @Published var note: String?
+    // Mouse reordering in the table: the dragged row follows the pointer and the list reorders
+    // each time it crosses half a row, so the order is right the moment the mouse is released.
+    @Published var dragID: UUID?
+    @Published var dragOffset: CGFloat = 0
+    private var dragFrom = 0
+    static let rowHeight: CGFloat = 46
+    static let rowStep: CGFloat = rowHeight + 1   // plus the divider
 
     private var timer: Timer?
     private var formatters: [String: DateFormatter] = [:]
@@ -166,6 +173,16 @@ final class Store: ObservableObject {
     }
 
     func remove(_ p: Place) { places.removeAll { $0.id == p.id } }
+
+    func drag(_ id: UUID, by dy: CGFloat) {
+        guard let cur = places.firstIndex(where: { $0.id == id }) else { return }
+        if dragID != id { dragID = id; dragFrom = cur }
+        let target = max(0, min(places.count - 1, dragFrom + Int((dy / Store.rowStep).rounded())))
+        if target != cur { places.move(fromOffsets: IndexSet(integer: cur), toOffset: target > cur ? target + 1 : target) }
+        dragOffset = dy - CGFloat(target - dragFrom) * Store.rowStep
+    }
+
+    func endDrag() { dragID = nil; dragOffset = 0 }
 
     /// Open the full website with these cities, in the long link form it understands for any city.
     func openWebsite() {

@@ -60,7 +60,7 @@ struct Panel: View {
                 } label: { Image(systemName: "ellipsis.circle") }
                     .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
             }
-            Text(store.note ?? "Click a city to show or hide it in the menu bar.")
+            Text(store.note ?? "Drag a city to reorder. Click it to show or hide it in the menu bar.")
                 .font(.caption2).foregroundStyle(store.note == nil ? .secondary : .primary)
         }
         .padding(14)
@@ -130,6 +130,7 @@ struct Row: View {
         let clock = store.time(place, at: at)
         let parts = clock.split(separator: " ").map(String.init)
         let sub = [store.gap(place, at: at), store.weekday(place, at: at)].compactMap { $0 }.joined(separator: " · ")
+        let dragging = store.dragID == place.id
         HStack(spacing: 10) {
             Text(place.flag.isEmpty ? "🌐" : place.flag).font(.system(size: 15))
             VStack(alignment: .leading, spacing: 1) {
@@ -150,10 +151,24 @@ struct Row: View {
             .frame(minWidth: store.h24 ? 76 : 104, alignment: .trailing)
             .background(alt.map(Sky.color) ?? Color.primary.opacity(0.08), in: RoundedRectangle(cornerRadius: 7))
         }
-        .padding(.vertical, 6).padding(.horizontal, 4)
+        .frame(height: Store.rowHeight)
+        .padding(.horizontal, 4)
+        .background {
+            if dragging {
+                RoundedRectangle(cornerRadius: 8).fill(Color(nsColor: .windowBackgroundColor))
+                    .shadow(color: .black.opacity(0.25), radius: 6, y: 2)
+            }
+        }
+        .offset(y: dragging ? store.dragOffset : 0)
+        .zIndex(dragging ? 1 : 0)
         .contentShape(Rectangle())
+        // Global space: the row itself moves while dragging, so a local translation would jump.
+        .gesture(DragGesture(minimumDistance: 3, coordinateSpace: .global)
+            .onChanged { store.drag(place.id, by: $0.translation.height) }
+            .onEnded { _ in store.endDrag() })
         .onTapGesture { store.togglePin(place) }
-        .help(place.pinned ? "\(place.name) is in the menu bar. Click to hide it." : "Click to show \(place.name) in the menu bar")
+        .onHover { inside in if inside { NSCursor.openHand.push() } else { NSCursor.pop() } }
+        .help("Drag to reorder. Click to \(place.pinned ? "hide it from" : "show it in") the menu bar.")
         .contextMenu {
             Button(place.pinned ? "Hide from menu bar" : "Show in menu bar") { store.togglePin(place) }
             Button("Remove \(place.shown)", role: .destructive) { store.remove(place) }.disabled(store.places.count == 1)
