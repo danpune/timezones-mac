@@ -19,9 +19,12 @@ struct Panel: View {
                 }
             }
 
-            let n = store.places.count
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: max(1, n == 4 ? 2 : min(3, n))), spacing: 6) {
-                ForEach(store.places) { Tile(place: $0, at: t) }
+            // A table, one city per row: the times sit in one right-aligned column so they compare at a glance.
+            VStack(spacing: 0) {
+                ForEach(Array(store.places.enumerated()), id: \.element.id) { i, p in
+                    if i > 0 { Divider().padding(.leading, 4) }
+                    Row(place: p, at: t)
+                }
             }
 
             if let o = store.overlap {
@@ -117,36 +120,38 @@ struct Panel: View {
     }
 }
 
-struct Tile: View {
+struct Row: View {
     @EnvironmentObject var store: Store
     let place: Place
     let at: Date
 
     var body: some View {
         let alt = place.lat.flatMap { la in place.lon.map { Sky.sunAlt(at, lat: la, lon: $0) } }
-        let ink = alt.map(Sky.ink) ?? Color.primary
         let clock = store.time(place, at: at)
         let parts = clock.split(separator: " ").map(String.init)
         let sub = [store.gap(place, at: at), store.weekday(place, at: at)].compactMap { $0 }.joined(separator: " · ")
-        VStack(alignment: .leading, spacing: 1) {
-            HStack(spacing: 3) {
-                Text(place.shown).lineLimit(1)
-                Spacer(minLength: 0)
-                if place.pinned { Image(systemName: "pin.fill").font(.system(size: 8)) }
+        HStack(spacing: 10) {
+            Text(place.flag.isEmpty ? "🌐" : place.flag).font(.system(size: 15))
+            VStack(alignment: .leading, spacing: 1) {
+                HStack(spacing: 4) {
+                    Text(place.shown).font(.system(size: 14, weight: .semibold)).lineLimit(1)
+                    if place.pinned { Image(systemName: "pin.fill").font(.system(size: 9)).foregroundStyle(.secondary) }
+                }
+                Text(sub).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
             }
-            .font(.system(size: 11))
-            HStack(alignment: .firstTextBaseline, spacing: 2) {
-                Text(parts[0]).font(.system(size: 21, weight: .bold)).monospacedDigit()
-                if parts.count > 1 { Text(parts[1]).font(.system(size: 10, weight: .bold)) }
+            Spacer(minLength: 6)
+            // Right-aligned with fixed-width digits and a fixed AM/PM slot, so every colon lines up.
+            HStack(alignment: .firstTextBaseline, spacing: 3) {
+                Text(parts[0]).font(.system(size: 20, weight: .bold)).monospacedDigit()
+                if parts.count > 1 { Text(parts[1]).font(.system(size: 10, weight: .bold)).frame(width: 20, alignment: .leading) }
             }
-            Text(sub).font(.system(size: 10.5)).lineLimit(1)
+            .foregroundStyle(alt.map(Sky.ink) ?? Color.primary)
+            .padding(.horizontal, 9).padding(.vertical, 4)
+            .frame(minWidth: store.h24 ? 76 : 104, alignment: .trailing)
+            .background(alt.map(Sky.color) ?? Color.primary.opacity(0.08), in: RoundedRectangle(cornerRadius: 7))
         }
-        .foregroundStyle(ink)
-        .padding(.horizontal, 8).padding(.vertical, 7)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(alt.map(Sky.color) ?? Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 9))
-        .overlay(RoundedRectangle(cornerRadius: 9).strokeBorder(Color.primary.opacity(alt == nil ? 0.15 : 0)))
-        .contentShape(RoundedRectangle(cornerRadius: 9))
+        .padding(.vertical, 6).padding(.horizontal, 4)
+        .contentShape(Rectangle())
         .onTapGesture { store.togglePin(place) }
         .help(place.pinned ? "\(place.name) is in the menu bar. Click to hide it." : "Click to show \(place.name) in the menu bar")
         .contextMenu {
