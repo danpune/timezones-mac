@@ -71,7 +71,13 @@ struct Panel: View {
                 }
             }
             if let c = store.clockNote { note(c, Color(red: 0.851, green: 0.467, blue: 0.024)) }
-            if let r = updater.release {
+            if let v = updater.updated {
+                HStack(alignment: .top) {
+                    note("Updated: you are now on version \(v).", .blue)
+                    Spacer()
+                    Button("What's new") { updater.openPage(v) }.controlSize(.small)
+                }
+            } else if let r = updater.release {
                 HStack(alignment: .top) {
                     note(updater.failed ? "Update failed: couldn't install version \(r.version). Download it from GitHub instead."
                          : updater.busy ? "Updating: getting version \(r.version)…" : "Update: version \(r.version) is ready.", .blue)

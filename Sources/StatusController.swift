@@ -25,6 +25,7 @@ final class StatusController: NSObject, NSApplicationDelegate, NSPopoverDelegate
         store.panelShown = { [weak self] in self?.popover.isShown ?? false }
         changes = store.objectWillChange.sink { [weak self] _ in DispatchQueue.main.async { self?.refresh() } }
         refresh()
+        Updater.shared.idle = { [weak self] in !(self?.popover.isShown ?? true) }
         Updater.shared.checkIfDue()
     }
 
@@ -63,5 +64,5 @@ final class StatusController: NSObject, NSApplicationDelegate, NSPopoverDelegate
     }
 
     func popoverWillShow(_ notification: Notification) { store.panelOpening(); Updater.shared.checkIfDue() }
-    func popoverDidClose(_ notification: Notification) { store.panelClosed() }
+    func popoverDidClose(_ notification: Notification) { store.panelClosed(); Updater.shared.panelClosed() }
 }

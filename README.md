@@ -19,9 +19,11 @@ A free companion to the [Time Zones](https://danpune.github.io/timezones/) websi
    ([Apple's guide](https://support.apple.com/guide/mac-help/open-a-mac-app-from-an-unknown-developer-mh40616/mac)).
 3. Look at the top right of your screen: the app lives in the menu bar, next to the clock (there is no Dock icon).
 
-**Updates:** from version 1.2 on, the panel tells you when a new version is out. Click **Update** and the app
-downloads it, checks it was signed by this project, replaces itself and restarts, with no "Open Anyway" step.
-On 1.0 or 1.1, download the zip above once to get this.
+**Updates:** from version 1.3 on, the app keeps itself up to date. It asks GitHub for the newest version when
+it starts and every 12 hours, and installs it quietly while the panel is closed, checking first that the
+download was signed by this project. Nothing to click, and no "Open Anyway" again; the panel says "Updated to
+…" afterwards. If the quiet install can't go ahead, the panel offers an **Update** button instead.
+On an older version, download the zip above once to get this.
 
 ## What you see
 

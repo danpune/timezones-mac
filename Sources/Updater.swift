@@ -1,10 +1,11 @@
 import AppKit
 import CryptoKit
 
-/// Updates from GitHub Releases: checks the latest release at most every 12 hours, and on the user's click
-/// downloads it, checks its signature, swaps the app in place and relaunches. Each release zip is signed
-/// with a key that lives only on the owner's Mac (Tools/sign.swift), so nothing else can be installed.
-/// A download made by the app itself carries no quarantine flag, so there's no "Open Anyway" again.
+/// Updates from GitHub Releases: checks the latest release at most every 12 hours, then installs it quietly
+/// while the panel is closed and says so afterwards. Each release zip is signed with a key that lives only on
+/// the owner's Mac (Tools/sign.swift), so nothing else can be installed; if the quiet install fails, the panel
+/// offers the update as a button instead. A download made by the app itself carries no quarantine flag, so
+/// there's no "Open Anyway" again.
 @MainActor
 final class Updater: ObservableObject {
     static let shared = Updater()
@@ -24,9 +25,19 @@ final class Updater: ObservableObject {
     @Published private(set) var release: Release?
     @Published private(set) var busy = false
     @Published private(set) var failed = false
+    /// The version this launch was updated to, shown once in the panel.
+    @Published private(set) var updated: String?
+    /// Set by the status controller: nothing is installed under the user's nose while the panel is open.
+    var idle: () -> Bool = { true }
     private var checked: Date?
 
     static let current = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0"
+
+    private init() {
+        let d = UserDefaults.standard
+        if d.string(forKey: "announce") == Self.current { updated = Self.current }
+        d.removeObject(forKey: "announce")
+    }
 
     func checkIfDue() {
         if let c = checked, Date().timeIntervalSince(c) < 12 * 3600 { return }
@@ -35,7 +46,21 @@ final class Updater: ObservableObject {
             guard let (data, _) = try? await URLSession.shared.data(from: Self.latest),
                   let r = try? JSONDecoder().decode(Release.self, from: data), Self.newer(r.version, than: Self.current) else { return }
             release = r
+            installIfIdle()
         }
+    }
+
+    /// Quietly, while the panel is closed. Never twice for the same version: if that install didn't take
+    /// (a version number that doesn't match its tag, say), the panel's Update button is left to the user.
+    func installIfIdle() {
+        guard let r = release, !busy, !failed, idle(), UserDefaults.standard.string(forKey: "installed") != r.version else { return }
+        install()
+    }
+
+    /// The panel was closed: the "Updated" line has been seen, and a waiting update can go in now.
+    func panelClosed() {
+        updated = nil
+        installIfIdle()
     }
 
     static func newer(_ a: String, than b: String) -> Bool { a.compare(b, options: .numeric) == .orderedDescending }
@@ -47,6 +72,8 @@ final class Updater: ObservableObject {
         Task {
             do {
                 try await Self.replace(Bundle.main.bundleURL, with: r)
+                UserDefaults.standard.set(r.version, forKey: "installed")   // don't install the same version twice
+                UserDefaults.standard.set(r.version, forKey: "announce")    // the new copy says so once
                 relaunch()
             } catch {
                 busy = false
@@ -55,7 +82,11 @@ final class Updater: ObservableObject {
         }
     }
 
-    func openPage() { if let r = release { NSWorkspace.shared.open(r.html_url) } }
+    /// The release page: the one found by a check, or the tag of the version just installed.
+    func openPage(_ version: String? = nil) {
+        if let v = version, let u = URL(string: "https://github.com/danpune/timezones-mac/releases/tag/v" + v) { NSWorkspace.shared.open(u) }
+        else if let r = release { NSWorkspace.shared.open(r.html_url) }
+    }
 
     static func verified(_ zip: Data, _ sig: Data) -> Bool {
         guard let raw = Data(base64Encoded: publicKey), let key = try? Curve25519.Signing.PublicKey(rawRepresentation: raw) else { return false }
