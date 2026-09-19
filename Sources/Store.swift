@@ -281,13 +281,15 @@ final class Store: ObservableObject {
         return (e.rise ? "sunrise " : "sunset ") + formatter(p.zone, h24 ? "HH:mm" : "h:mm").string(from: e.at)
     }
 
-    var menuTitle: String {
+    /// Short 12h times ("11:40p") so three cities fit beside the notch; VoiceOver gets the full time.
+    func menuTitle(short: Bool = true) -> String {
         let pins = places.filter(\.pinned)
         let flags = pins.map(\.flag)
         return pins.map { p in
             let unique = !p.flag.isEmpty && flags.filter { $0 == p.flag }.count == 1
             let tag = pins.count == 1 ? (p.flag.isEmpty ? p.short : p.flag + " " + p.short) : unique ? p.flag : p.short
-            return tag + " " + time(p, at: now)
+            let t = short && !h24 ? String(formatter(p.zone, "h:mma").string(from: now).dropLast()).lowercased() : time(p, at: now)
+            return tag + " " + t
         }.joined(separator: "  ")
     }
 

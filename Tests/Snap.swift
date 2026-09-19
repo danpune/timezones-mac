@@ -11,7 +11,7 @@ struct Snap {
         _ = NSApplication.shared
         NSApp.setActivationPolicy(.accessory)
         let store = Store()
-        print("menu bar title:", store.menuTitle)
+        print("menu bar title:", store.menuTitle(), "|", store.menuTitle(short: false))
         print("overlap:", store.overlap ?? "-")
         print("search mum:", Catalog.shared.search("mum").map(\.name))
         print("search thailand:", Catalog.shared.search("thailand").map(\.name))

@@ -27,10 +27,10 @@ final class StatusController: NSObject, NSApplicationDelegate, NSPopoverDelegate
         refresh()
     }
 
-    /// Pinned cities next to the macOS clock ("🇮🇳 MUM 9:42 AM"); a globe when none is pinned.
+    /// Pinned cities next to the macOS clock ("🇮🇳 MUM 9:42a"); a globe when none is pinned.
     private func refresh() {
         guard let b = item?.button else { return }
-        let t = store.menuTitle
+        let t = store.menuTitle()
         if t.isEmpty {
             b.attributedTitle = NSAttributedString(string: "")
             b.image = NSImage(systemSymbolName: "globe", accessibilityDescription: "Time Zones")
@@ -39,7 +39,7 @@ final class StatusController: NSObject, NSApplicationDelegate, NSPopoverDelegate
             let size = NSFont.menuBarFont(ofSize: 0).pointSize
             b.attributedTitle = NSAttributedString(string: t, attributes: [.font: NSFont.monospacedDigitSystemFont(ofSize: size, weight: .regular)])
         }
-        b.setAccessibilityLabel(t.isEmpty ? "Time Zones" : "Time Zones, " + t)
+        b.setAccessibilityLabel(t.isEmpty ? "Time Zones" : "Time Zones, " + store.menuTitle(short: false))
     }
 
     @objc private func clicked() { toggle() }

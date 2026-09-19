@@ -21,7 +21,7 @@ A free companion to the [Time Zones](https://danpune.github.io/timezones/) websi
 
 ## What you see
 
-In the menu bar, up to three pinned cities with their flag and time, for example **🇮🇳 MUM 11:54 AM**.
+In the menu bar, up to three pinned cities with their flag and a short time, for example **🇺🇸 2:40a  🇮🇳 12:10p  🇬🇧 7:40a**.
 Click it (or press **⌃⌥T** from any app) to open the panel. Each city shows:
 
 - **The time**, on the colour of that city's sky right now: dark blue at night, orange at sunrise and sunset,
