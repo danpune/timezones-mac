@@ -155,7 +155,9 @@ struct Row: View {
         let alt = place.lat.flatMap { la in place.lon.map { Sky.sunAlt(at, lat: la, lon: $0) } }
         let clock = store.time(place, at: at)
         let parts = clock.split(separator: " ").map(String.init)
-        let sub = [store.gap(place, at: at), store.weekday(place, at: at)].compactMap { $0 }.joined(separator: " · ")
+        let sky = place.lat.flatMap { la in place.lon.map { Sky.symbol(at, lat: la, lon: $0) } }
+        let sun = store.sunText(place, at: at)
+        let sub = [store.gap(place, at: at), store.weekday(place, at: at), sun].compactMap { $0 }.joined(separator: " · ")
         let dragging = store.dragID == place.id
         HStack(spacing: 10) {
             Text(place.flag.isEmpty ? "🌐" : place.flag).font(.system(size: 15))
@@ -173,12 +175,13 @@ struct Row: View {
             }
             // Right-aligned with fixed-width digits and a fixed AM/PM slot, so every colon lines up.
             HStack(alignment: .firstTextBaseline, spacing: 3) {
+                if let sky { Image(systemName: sky.name).font(.system(size: 12, weight: .semibold)).symbolRenderingMode(.hierarchical) }
                 Text(parts[0]).font(.system(size: 20, weight: .bold)).monospacedDigit()
                 if parts.count > 1 { Text(parts[1]).font(.system(size: 10, weight: .bold)).frame(width: 20, alignment: .leading) }
             }
             .foregroundStyle(alt.map(Sky.ink) ?? Color.primary)
             .padding(.horizontal, 9).padding(.vertical, 4)
-            .frame(minWidth: store.h24 ? 76 : 104, alignment: .trailing)
+            .frame(minWidth: store.h24 ? 94 : 122, alignment: .trailing)
             .background(alt.map(Sky.color) ?? Color.primary.opacity(0.08), in: RoundedRectangle(cornerRadius: 7))
         }
         .frame(height: Store.rowHeight)
@@ -207,6 +210,6 @@ struct Row: View {
             Button("Remove \(place.shown)", role: .destructive) { store.remove(place) }.disabled(store.places.count == 1)
         }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(place.shown), \(clock), \(sub)\(place.pinned ? ", in the menu bar" : "")")
+        .accessibilityLabel("\(place.shown), \(clock)\(sky.map { ", " + $0.words } ?? ""), \(sub)\(place.pinned ? ", in the menu bar" : "")")
     }
 }

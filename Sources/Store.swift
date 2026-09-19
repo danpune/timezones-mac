@@ -125,6 +125,15 @@ final class Store: ObservableObject {
         return formatter(p.zone, "yyyyMMdd").string(from: t) == mine ? nil : formatter(p.zone, "EEE").string(from: t)
     }
 
+    /// "sunset 7:20" / "sunrise 6:26" in the city's own time; AM/PM is left off because the word says which.
+    func sunText(_ p: Place, at t: Date) -> String? {
+        guard let la = p.lat, let lo = p.lon else { return nil }
+        guard let e = Sky.nextEvent(t, lat: la, lon: lo) else {
+            return Sky.sunAlt(t, lat: la, lon: lo) >= Sky.h0 ? "sun up all day" : "sun down all day"
+        }
+        return (e.rise ? "sunrise " : "sunset ") + formatter(p.zone, h24 ? "HH:mm" : "h:mm").string(from: e.at)
+    }
+
     var menuTitle: String {
         places.filter(\.pinned).map { "\($0.short) \(time($0, at: now))" }.joined(separator: "   ")
     }

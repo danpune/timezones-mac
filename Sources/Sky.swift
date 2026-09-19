@@ -15,6 +15,40 @@ enum Sky {
         return asin(sin(lat * rad) * sin(dec) + cos(lat * rad) * cos(dec) * cos(ha)) / rad
     }
 
+    // Sunrise and sunset are where the sun's centre is 0.833° below the horizon (refraction + disc),
+    // the same as the website, so the times match Apple's Weather and Clock to the minute.
+    static let h0 = -0.833
+
+    /// SF Symbol for the sky right now: sun up, sun low on the horizon (rising or setting), or night.
+    static func symbol(_ t: Date, lat: Double, lon: Double) -> (name: String, words: String) {
+        let a = sunAlt(t, lat: lat, lon: lon)
+        if a >= h0 { return ("sun.max.fill", "daytime") }
+        if a >= -6 {
+            let rising = sunAlt(t.addingTimeInterval(600), lat: lat, lon: lon) > a
+            return rising ? ("sunrise.fill", "dawn") : ("sunset.fill", "dusk")
+        }
+        return ("moon.stars.fill", "night")
+    }
+
+    /// The next sunrise or sunset after t, found in 10-minute steps and bisected to the second.
+    /// Nil when neither happens in the next 30 hours (midnight sun or polar night).
+    static func nextEvent(_ t: Date, lat: Double, lon: Double) -> (rise: Bool, at: Date)? {
+        var lo = t, prev = sunAlt(t, lat: lat, lon: lon)
+        for i in 1...180 {
+            let hi = t.addingTimeInterval(Double(i) * 600), a = sunAlt(hi, lat: lat, lon: lon)
+            if (prev < h0) != (a < h0) {
+                var l = lo, h = hi
+                for _ in 0..<12 {
+                    let m = l.addingTimeInterval(h.timeIntervalSince(l) / 2)
+                    if (sunAlt(m, lat: lat, lon: lon) < h0) == (prev < h0) { l = m } else { h = m }
+                }
+                return (prev < h0, h)
+            }
+            lo = hi; prev = a
+        }
+        return nil
+    }
+
     // Night, twilights, golden hour, day.
     private static let stops: [(Double, UInt32)] = [
         (-90, 0x232c47), (-18, 0x293455), (-12, 0x34416c), (-6, 0x4e4b7f), (-3, 0x86617d),
