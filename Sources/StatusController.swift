@@ -1,37 +1,29 @@
 import AppKit
 import Combine
-import OSLog
 import SwiftUI
 
-/// The menu bar item and its panel, built on NSStatusItem + NSPopover rather than SwiftUI's
+/// The menu bar items and their panel, built on NSStatusItem + NSPopover rather than SwiftUI's
 /// MenuBarExtra: on macOS 27 a MenuBarExtra cannot be opened from code, so ⌃⌥T and Esc did nothing.
+///
+/// One item per pinned city, rather than one wide item for all of them: macOS keeps what fits beside
+/// the clock and moves the rest to the other side of the camera, so every city keeps its flag or name.
 @MainActor
 final class StatusController: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     static private(set) weak var shared: StatusController?
     let store = Store()
-    private var item: NSStatusItem!
+    private var items: [NSStatusItem] = []
     private let popover = NSPopover()
     private var changes: Set<AnyCancellable> = []
-    /// The menu bar had no room for flags and names, so the item shows times alone.
-    private var compact = false
-    private var pins = ""
-    private var measure = true
-    private let log = Logger(subsystem: "io.github.danpune.timezones", category: "menubar")
+    private var pins = "-"
 
     func applicationDidFinishLaunching(_ note: Notification) {
         StatusController.shared = self
-        item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        item.button?.target = self
-        item.button?.action = #selector(clicked)
         let host = NSHostingController(rootView: Panel().environmentObject(store))
         host.sizingOptions = .preferredContentSize
         popover.contentViewController = host
         popover.behavior = .transient
         popover.delegate = self
         store.panelShown = { [weak self] in self?.popover.isShown ?? false }
-        NotificationCenter.default.addObserver(forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main) { [weak self] _ in
-            Task { @MainActor in self?.compact = false; self?.measure = true; self?.refresh() }   // another screen, another menu bar
-        }
         for source in [store.objectWillChange, Updater.shared.objectWillChange] {
             source.sink { [weak self] _ in DispatchQueue.main.async { self?.refresh() } }.store(in: &changes)
         }
@@ -40,29 +32,41 @@ final class StatusController: NSObject, NSApplicationDelegate, NSPopoverDelegate
         Updater.shared.checkIfDue()
     }
 
-    /// Pinned cities next to the macOS clock ("🇮🇳 MUM 9:42a"); a globe when none is pinned. A blue dot
-    /// after an update, until the panel is opened and the "Updated" line has been seen.
+    /// Each pinned city next to the macOS clock ("🇮🇳 MUM 9:42a"); a globe when none is pinned. A blue dot
+    /// on the last one after an update, until the panel is opened and the "Updated" line has been seen.
     private func refresh() {
-        guard let b = item?.button else { return }
-        let pinned = store.places.filter(\.pinned).map(\.name).joined(separator: "|")
-        if pinned != pins { pins = pinned; compact = false; measure = true }   // a new set of cities: try the labels again
-        let t = store.menuTitle(labels: !compact), updated = Updater.shared.updated
-        b.image = t.isEmpty ? NSImage(systemSymbolName: "globe", accessibilityDescription: "Time Zones") : nil
-        b.attributedTitle = StatusController.title(t, dot: updated != nil)
-        b.toolTip = t.isEmpty ? "Time Zones" : store.menuTitle(short: false)
-        b.setAccessibilityLabel((t.isEmpty ? "Time Zones" : "Time Zones, " + store.menuTitle(short: false))
-                                + (updated.map { ", updated to version \($0)" } ?? ""))
-        if measure { measure = false; DispatchQueue.main.async { self.fit() } }
+        let pinned = store.places.filter(\.pinned)
+        let key = pinned.map(\.name).joined(separator: "|")
+        if key != pins { pins = key; make(pinned.isEmpty ? 1 : pinned.count) }
+        let updated = Updater.shared.updated
+        guard !pinned.isEmpty else {
+            let b = items[0].button
+            b?.image = NSImage(systemSymbolName: "globe", accessibilityDescription: "Time Zones")
+            b?.attributedTitle = StatusController.title("", dot: updated != nil)
+            b?.toolTip = "Time Zones"
+            b?.setAccessibilityLabel("Time Zones" + (updated.map { ", updated to version \($0)" } ?? ""))
+            return
+        }
+        for (i, p) in pinned.enumerated() {
+            guard let b = items[i].button else { continue }
+            b.image = nil
+            b.attributedTitle = StatusController.title(store.menuLabel(p), dot: updated != nil && i == pinned.count - 1)
+            b.toolTip = p.name + ", " + store.time(p, at: store.now)
+            b.setAccessibilityLabel(p.name + ", " + store.time(p, at: store.now)
+                                    + (updated.map { ", Time Zones updated to version \($0)" } ?? ""))
+        }
     }
 
-    /// An item too wide for the space beside the clock is moved by macOS to the other side of the camera,
-    /// where an app with many menus hides it. Then the flags and names go and the times stay.
-    private func fit() {
-        guard !compact, let notch = NSScreen.main?.auxiliaryTopRightArea?.minX,
-              let x = item?.button?.window?.frame.minX, x < notch else { return }
-        log.info("menu bar item at \(x, privacy: .public) is left of the camera at \(notch, privacy: .public): dropping the labels")
-        compact = true
-        refresh()
+    /// Fresh items whenever the pinned cities change. Made back to front: each new item goes to the left
+    /// of the ones before it, so they read in the panel's order.
+    private func make(_ count: Int) {
+        items.forEach(NSStatusBar.system.removeStatusItem)
+        items = (0..<count).map { _ in
+            let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+            item.button?.target = self
+            item.button?.action = #selector(clicked)
+            return item
+        }.reversed()
     }
 
     static func title(_ text: String, dot: Bool) -> NSAttributedString {
@@ -75,11 +79,11 @@ final class StatusController: NSObject, NSApplicationDelegate, NSPopoverDelegate
         return s
     }
 
-    @objc private func clicked() { toggle() }
+    @objc private func clicked(_ sender: NSStatusBarButton) { toggle(from: sender) }
 
-    func toggle() {
+    func toggle(from button: NSStatusBarButton? = nil) {
         if popover.isShown { popover.performClose(nil); return }
-        guard let b = item.button else { return }
+        guard let b = button ?? items.last?.button else { return }
         NSApp.activate(ignoringOtherApps: true)
         popover.show(relativeTo: b.bounds, of: b, preferredEdge: .minY)
         popover.contentViewController?.view.window?.makeKey()
@@ -88,7 +92,7 @@ final class StatusController: NSObject, NSApplicationDelegate, NSPopoverDelegate
     func close() { if popover.isShown { popover.performClose(nil) } }
 
     /// Opening the app again from Finder or Spotlight shows the panel: the only way in if the
-    /// menu bar item is ever hidden.
+    /// menu bar items are ever hidden.
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         if !popover.isShown { toggle() }
         return false

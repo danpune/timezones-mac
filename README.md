@@ -27,7 +27,7 @@ On an older version, download the zip above once to get this.
 
 ## What you see
 
-In the menu bar, up to six pinned cities with their flag and a short time, for example **🇺🇸 2:40a  🇮🇳 12:10p  🇬🇧 7:40a**.
+In the menu bar, up to six pinned cities, each its own item with its flag, short name and time, for example **🇺🇸 NY 7:58p** **🇮🇳 MUM 5:28a**.
 Click it (or press **⌃⌥T** from any app) to open the panel. Each city shows:
 
 - **The time**, on the colour of that city's sky right now: dark blue at night, orange at sunrise and sunset,
@@ -44,7 +44,7 @@ Click it (or press **⌃⌥T** from any app) to open the panel. Each city shows:
 |---|---|
 | <img src="docs/planning.png" width="400" alt="Planning 9:00 AM: every city shows its time at that moment"> | **Plan a call.** Pick a day, type a time like **3pm**, or drag the slider. Every city shows its time then, and the green band under the slider marks when everyone is free. **Copy times** puts the list on your clipboard, ready to paste into WhatsApp or an email. **Back to now** (or Esc) returns to the live clock. |
 | <img src="docs/search.png" width="400" alt="Searching for nel lists Nellore, India first"> | **Add a city.** Type a city, a country (**Thailand** gives Bangkok) or a time zone (**PST**, **IST**, **UTC+5:30**) and click **+** or press Return. |
-| <img src="docs/hover.png" width="400" alt="Hovering San Francisco shows a pin outline and a remove button"> | **Pin, reorder, remove.** Click a city to show it in the menu bar, up to six. If they are too wide for the space beside the clock, the flags and names drop and the times stay, in this order; hover for the names. Drag a city up or down to reorder. Hover and click **×** to remove it, or right-click for Move up, Move down and Remove. |
+| <img src="docs/hover.png" width="400" alt="Hovering San Francisco shows a pin outline and a remove button"> | **Pin, reorder, remove.** Click a city to show it in the menu bar, up to six. Each one is its own item, so macOS keeps what fits beside the clock and puts the rest on the other side of the camera; hover for the full name and time. Drag a city up or down to reorder. Hover and click **×** to remove it, or right-click for Move up, Move down and Remove. |
 | <img src="docs/panel-dark.png" width="400" alt="The same panel in dark mode"> | **Make it yours.** 12h or 24h, °F or °C. **Nicknames and pins** lets you call a city "Mom" or "Office". The **⋯** menu has Open at login, the ⌃⌥T shortcut, Copy a link to the website, and Quit. |
 
 A heads-up appears when a city changes its clocks for daylight saving in the next two weeks, so a call

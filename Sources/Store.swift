@@ -281,18 +281,17 @@ final class Store: ObservableObject {
         return (e.rise ? "sunrise " : "sunset ") + formatter(p.zone, h24 ? "HH:mm" : "h:mm").string(from: e.at)
     }
 
-    /// Short 12h times ("11:40p") so more cities fit beside the notch; VoiceOver gets the full time.
-    /// Without labels it is times alone, in the panel's order: the status controller falls back to that
-    /// when the menu bar has no room for the flags and names.
-    func menuTitle(short: Bool = true, labels: Bool = true) -> String {
-        let pins = places.filter(\.pinned)
-        let flags = pins.map(\.flag)
-        return pins.map { p in
-            let unique = !p.flag.isEmpty && flags.filter { $0 == p.flag }.count == 1
-            let tag = pins.count == 1 ? (p.flag.isEmpty ? p.short : p.flag + " " + p.short) : unique ? p.flag : p.short
-            let t = short && !h24 ? String(formatter(p.zone, "h:mma").string(from: now).dropLast()).lowercased() : time(p, at: now)
-            return labels ? tag + " " + t : t
-        }.joined(separator: labels ? "  " : " ")
+    /// One city as its own menu bar item: flag and short name, so a glance says which city it is, then a
+    /// short 12h time ("11:40p"). VoiceOver and the tooltip get the full name and time.
+    func menuLabel(_ p: Place, short: Bool = true) -> String {
+        let tag = p.flag.isEmpty ? p.short : p.flag + " " + p.short
+        let t = short && !h24 ? String(formatter(p.zone, "h:mma").string(from: now).dropLast()).lowercased() : time(p, at: now)
+        return tag + " " + t
+    }
+
+    /// Every pinned city in one string, for tests and messages.
+    func menuTitle(short: Bool = true) -> String {
+        places.filter(\.pinned).map { menuLabel($0, short: short) }.joined(separator: "  ")
     }
 
     // MARK: clock changes, as on the website: a zone's offset changes within a week before or two weeks after
@@ -481,7 +480,7 @@ final class Store: ObservableObject {
         }
         places[i].pinned.toggle()
         if places[i].pinned && pinned >= 3 {
-            note = "\(pinned + 1) cities in the menu bar: if there is no room beside the clock, the names go and the times stay."
+            note = "\(pinned + 1) cities in the menu bar: macOS keeps what fits beside the clock and puts the rest past the camera."
         }
     }
 
