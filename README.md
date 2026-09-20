@@ -19,6 +19,8 @@ A free companion to the [Time Zones](https://danpune.github.io/timezones/) websi
    ([Apple's guide](https://support.apple.com/guide/mac-help/open-a-mac-app-from-an-unknown-developer-mh40616/mac)).
 3. Look at the top right of your screen: the app lives in the menu bar, next to the clock (there is no Dock icon).
 
+**What changed, version by version:** the [releases page](https://github.com/danpune/timezones-mac/releases).
+
 **Updates:** from version 1.3 on, the app keeps itself up to date. It asks GitHub for the newest version when
 it starts and every 12 hours, and installs it quietly while the panel is closed, checking first that the
 download was signed by this project. Nothing to click, and no "Open Anyway" again; the panel says "Updated to
