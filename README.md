@@ -15,7 +15,7 @@ A free companion to the [Time Zones](https://danpune.github.io/timezones/) websi
 1. Double-click the zip, then drag **Time Zones** into your **Applications** folder and open it.
 2. macOS says it can't check the app, because it isn't signed with a paid Apple developer account.
    Open **System Settings → Privacy & Security**, scroll down, click **Open Anyway** next to "Time Zones",
-   and enter your password. You only do this once for each version
+   and enter your password. Just this once: later versions install themselves
    ([Apple's guide](https://support.apple.com/guide/mac-help/open-a-mac-app-from-an-unknown-developer-mh40616/mac)).
 3. Look at the top right of your screen: the app lives in the menu bar, next to the clock (there is no Dock icon).
 
@@ -30,7 +30,7 @@ On an older version, download the zip above once to get this.
 ## What you see
 
 In the menu bar, up to six pinned cities, each its own item with its flag, short name and time, for example **🇺🇸 NY 7:58p** **🇮🇳 MUM 5:28a**.
-Click it (or press **⌃⌥T** from any app) to open the panel. Each city shows:
+Click any of them (or press **⌃⌥T** from any app) to open the panel. Each city shows:
 
 - **The time**, on the colour of that city's sky right now: dark blue at night, orange at sunrise and sunset,
   light blue in the day, with a ☀️ / 🌅 / 🌙 symbol
