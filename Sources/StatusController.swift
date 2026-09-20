@@ -59,10 +59,22 @@ final class StatusController: NSObject, NSApplicationDelegate, NSPopoverDelegate
 
     /// Fresh items whenever the pinned cities change. Made back to front: each new item goes to the left
     /// of the ones before it, so they read in the panel's order.
+    ///
+    /// Each keeps its own place in the menu bar. macOS saves that place as the distance from the right edge,
+    /// so the cities ask for the smallest gaps it allows and sit next to the system icons; apps installed
+    /// later then land to their left instead of pushing the times away from the clock. Seeded once, so a
+    /// ⌘-drag by hand wins from then on. (Seed 2: the first attempt used large numbers, which is the far left.)
     private func make(_ count: Int) {
         items.forEach(NSStatusBar.system.removeStatusItem)
-        items = (0..<count).map { _ in
+        let d = UserDefaults.standard
+        let seeded = d.integer(forKey: "menuBarSeed") >= 2
+        d.set(2, forKey: "menuBarSeed")
+        items = (0..<count).map { i in
+            let name = "city-\(i)"
+            let key = "NSStatusItem Preferred Position " + name
+            if !seeded || d.object(forKey: key) == nil { d.set((count - 1 - i) * 80 + 1, forKey: key) }
             let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+            item.autosaveName = name
             item.button?.target = self
             item.button?.action = #selector(clicked)
             return item

@@ -30,7 +30,8 @@ On an older version, download the zip above once to get this.
 ## What you see
 
 In the menu bar, up to six pinned cities, each its own item with its flag, short name and time, for example **🇺🇸 NY 7:58p** **🇮🇳 MUM 5:28a**.
-Click any of them (or press **⌃⌥T** from any app) to open the panel. Each city shows:
+Click any of them (or press **⌃⌥T** from any app) to open the panel. They keep their place next to the
+system icons, so apps installed later sit to their left; ⌘-drag one if you would rather arrange them yourself. Each city shows:
 
 - **The time**, on the colour of that city's sky right now: dark blue at night, orange at sunrise and sunset,
   light blue in the day, with a ☀️ / 🌅 / 🌙 symbol
