@@ -136,6 +136,8 @@ struct Panel: View {
                 Picker("Temperature", selection: $store.fahrenheit) { Text("°F").tag(true); Text("°C").tag(false) }
                     .pickerStyle(.segmented).labelsHidden().frame(width: 72)
                 Menu {
+                    Button("Version \(Updater.current) · What's new") { updater.openPage(Updater.current) }
+                    Divider()
                     Toggle("Open at login", isOn: Binding(get: { store.launchAtLogin }, set: setLogin))
                     Toggle("Open with ⌃⌥T from any app", isOn: $store.hotkeyOn)
                     Divider()

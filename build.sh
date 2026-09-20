@@ -8,8 +8,8 @@ cd "${0:A:h}"
 
 NAME="Time Zones"
 EXE="TimeZones"
-VERSION="1.8"
-BUILD_NUMBER="9"
+VERSION="1.9"
+BUILD_NUMBER="10"
 MIN_OS="13.0"
 APP="build/$NAME.app"
 
